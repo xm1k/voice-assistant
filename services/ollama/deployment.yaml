@@ -1,0 +1,48 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: voice-assistant
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              ollama serve &
+              until ollama list > /dev/null 2>&1; do sleep 2; done
+              ollama list | grep -q "qwen2.5" || ollama pull qwen2.5:7b
+              wait
+          ports:
+            - containerPort: 11434
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+            - name: OLLAMA_ORIGINS
+              value: "*"
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "20Gi"
+              cpu: "12"
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models

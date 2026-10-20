@@ -1,0 +1,40 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webui
+  namespace: voice-assistant
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: webui
+  template:
+    metadata:
+      labels:
+        app: webui
+    spec:
+      containers:
+        - name: webui
+          image: yidadaa/chatgpt-next-web:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: OPENAI_API_KEY
+              value: "ollama"
+            - name: BASE_URL
+              value: "http://ollama.voice-assistant.svc.cluster.local:11434"
+            - name: CUSTOM_MODELS
+              value: "-all,+qwen2.5:7b"
+            - name: DEFAULT_MODEL
+              value: "qwen2.5:7b"
+            - name: CODE
+              value: ""
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "10m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"

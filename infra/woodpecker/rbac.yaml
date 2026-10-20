@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/exec, pods/log, secrets, services, configmaps]
+    verbs: [get, list, watch, create, update, delete, patch]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list, watch, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+subjects:
+  - kind: ServiceAccount
+    name: woodpecker-agent
+    namespace: woodpecker
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: woodpecker-agent

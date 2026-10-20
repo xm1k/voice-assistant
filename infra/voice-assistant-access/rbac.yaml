@@ -1,0 +1,42 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: voice-assistant-user
+  namespace: voice-assistant
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voice-assistant-user-token
+  namespace: voice-assistant
+  annotations:
+    kubernetes.io/service-account.name: voice-assistant-user
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: voice-assistant-user
+  namespace: voice-assistant
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: voice-assistant-user
+  namespace: voice-assistant
+subjects:
+  - kind: ServiceAccount
+    name: voice-assistant-user
+    namespace: voice-assistant
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: voice-assistant-user

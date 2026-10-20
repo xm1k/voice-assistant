@@ -1,0 +1,81 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale
+  namespace: tailscale
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tailscale
+  template:
+    metadata:
+      labels:
+        app: tailscale
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: tailscale
+          image: debian:bookworm-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              export DEBIAN_FRONTEND=noninteractive
+
+              apt-get update
+              apt-get install -y --no-install-recommends curl ca-certificates iproute2
+              curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+                -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+              echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/debian bookworm main" \
+                > /etc/apt/sources.list.d/tailscale.list
+              apt-get update
+              apt-get install -y --no-install-recommends tailscale
+
+              mkdir -p /var/run/tailscale
+              tailscaled --state=mem: --socket=/var/run/tailscale/tailscaled.sock &
+              TSD_PID=$!
+              trap 'kill $TSD_PID' TERM INT
+
+              until tailscale status >/dev/null 2>&1 || [ $? -eq 1 ]; do sleep 1; done
+
+              tailscale up \
+                --auth-key="${TS_AUTHKEY}" \
+                --hostname="${TS_HOSTNAME}" \
+                --advertise-tags=tag:voice-assistant \
+                --netfilter-mode=off \
+                --accept-routes=false \
+                --accept-dns=false
+
+              wait $TSD_PID
+          env:
+            - name: TS_HOSTNAME
+              value: voice-assistant-k3s
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          volumeMounts:
+            - name: tun
+              mountPath: /dev/net/tun
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
