@@ -1,0 +1,29 @@
+---
+steps:
+  - name: build
+    image: registry.registry.svc.cluster.local:5000/ci:latest
+    privileged: true
+    environment:
+      KUBECONFIG_DATA:
+        from_secret: KUBECONFIG_DATA
+    volumes:
+      - /var/cache/woodpecker-podman:/var/lib/containers
+    commands:
+      - git fetch --depth=2
+      - python3 infra/ci/run_cd.py .
+    when:
+      event: push
+
+  - name: argocd-sync
+    image: argoproj/argocd
+    environment:
+      ARGOCD_OPTS: "--insecure"
+      ARGOCD_TOKEN:
+        from_secret: ARGOCD_TOKEN
+    commands:
+      - argocd app sync voice-assistant
+          --server argocd-server.argocd.svc.cluster.local
+          --auth-token $ARGOCD_TOKEN
+          --insecure
+    when:
+      event: push

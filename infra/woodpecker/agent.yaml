@@ -1,0 +1,38 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: woodpecker-agent
+  namespace: woodpecker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: woodpecker-agent
+  template:
+    metadata:
+      labels:
+        app: woodpecker-agent
+    spec:
+      serviceAccountName: woodpecker-agent
+      containers:
+        - name: woodpecker-agent
+          image: woodpeckerci/woodpecker-agent:v3
+          env:
+            - name: WOODPECKER_SERVER
+              value: "woodpecker-server.woodpecker.svc.cluster.local:9000"
+            - name: WOODPECKER_AGENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-secret
+                  key: WOODPECKER_AGENT_SECRET
+            - name: WOODPECKER_BACKEND
+              value: "kubernetes"
+            - name: WOODPECKER_BACKEND_K8S_NAMESPACE
+              value: "woodpecker"
+            - name: WOODPECKER_BACKEND_K8S_STORAGE_CLASS
+              value: ""
+            - name: WOODPECKER_BACKEND_K8S_VOLUME_SIZE
+              value: "10Gi"
+            - name: WOODPECKER_BACKEND_K8S_STORAGE_RWX
+              value: "false"

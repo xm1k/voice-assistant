@@ -1,0 +1,85 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: woodpecker-server
+  namespace: woodpecker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: woodpecker-server
+  template:
+    metadata:
+      labels:
+        app: woodpecker-server
+    spec:
+      containers:
+        - name: woodpecker-server
+          image: woodpeckerci/woodpecker-server:v3
+          ports:
+            - containerPort: 8000
+              name: http
+            - containerPort: 9000
+              name: grpc
+          env:
+            - name: WOODPECKER_HOST
+              value: "http://194.169.160.248:32000"
+            - name: WOODPECKER_GITHUB
+              value: "true"
+            - name: WOODPECKER_ADMIN
+              value: "xm1k"
+            - name: WOODPECKER_OPEN
+              value: "true"
+            - name: WOODPECKER_GITHUB_CLIENT
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-secret
+                  key: WOODPECKER_GITHUB_CLIENT
+            - name: WOODPECKER_GITHUB_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-secret
+                  key: WOODPECKER_GITHUB_SECRET
+            - name: WOODPECKER_AGENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: woodpecker-secret
+                  key: WOODPECKER_AGENT_SECRET
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/woodpecker
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: woodpecker-server-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: woodpecker-server-pvc
+  namespace: woodpecker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: woodpecker-server
+  namespace: woodpecker
+spec:
+  selector:
+    app: woodpecker-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      nodePort: 32000
+    - name: grpc
+      port: 9000
+      targetPort: 9000
+  type: NodePort
