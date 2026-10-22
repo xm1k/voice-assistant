@@ -51,6 +51,11 @@ spec:
                 secretKeyRef:
                   name: secrets
                   key: OPENROUTER_API_KEY
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DEEPSEEK_API_KEY
             - name: YADRO_API_KEY
               valueFrom:
                 secretKeyRef:
