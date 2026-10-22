@@ -18,6 +18,5 @@ RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app 
 COPY --link --from=dependencies /app/.venv /app/.venv
 COPY --link --chown=10001:10001 shared/backend/ /app/backend/
 COPY --link --chown=10001:10001 services/auth/app/backend/ /app/backend/
-COPY --link --chown=10001:10001 services/auth/app/config/ /app/config/
 USER 10001:10001
 CMD ["uvicorn", "backend.auth.main:app", "--host", "0.0.0.0", "--port", "8000"]
