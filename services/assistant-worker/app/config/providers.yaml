@@ -8,6 +8,14 @@ llm:
       api_key_env: OPENROUTER_API_KEY
       timeout_seconds: 60
       max_tokens: 2500
+    deepseek:
+      label: "DeepSeek · Flash"
+      provider: openai
+      base_url: https://api.deepseek.com
+      model: deepseek-flash
+      api_key_env: DEEPSEEK_API_KEY
+      timeout_seconds: 60
+      max_tokens: 2500
     ollama:
       label: "Ollama · Qwen3 14B (local)"
       provider: openai
