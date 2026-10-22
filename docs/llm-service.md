@@ -12,7 +12,7 @@ Worker получает от core через claim: `job_id`, `claim_token`, `us
 
 `TypeAdapter(Decision).json_schema()` генерирует схему, включая Command, Fields, Query, RecordReference и Recurrence. `strict_schema()` удаляет defaults, устанавливает `additionalProperties: false` и делает объявленные поля обязательными для ответа провайдера. Nullable-поля заполняются `null`, списки без элементов — `[]`.
 
-Схема передаётся отдельным полем HTTP-запроса к `/chat/completions`:
+По умолчанию схема передаётся отдельным полем HTTP-запроса к `/chat/completions`:
 
 ```python
 response_format = {
@@ -26,6 +26,20 @@ response_format = {
 ```
 
 Не каждый провайдер одинаково поддерживает structured outputs. HTTP 200 не означает валидный JSON или сохранение данных. Pydantic повторно проверяет ответ; бизнес-проверки вроде сравнения дат выполняются в приложении. Провайдерская JSON Schema не кодирует все Python-валидаторы.
+
+Профиль DeepSeek использует `deepseek-flash` и JSON Output: `response_format: json_object`
+в `providers.yaml` превращается в `response_format={"type":"json_object"}` в HTTP-запросе.
+Для этого режима клиент добавляет в начало messages системное сообщение с полной схемой
+Decision и примером JSON. Исходная история не изменяется. JSON Output обеспечивает формат
+JSON, но соответствие Decision и бизнес-правилам проверяет приложение; ошибки возвращаются
+модели через существующий цикл исправления. Пустой ответ и обрыв по `finish_reason=length`
+также обрабатываются этим циклом.
+
+В профиле DeepSeek задано `thinking: disabled`: клиент передаёт
+`thinking={"type":"disabled"}` явно, без опоры на `/no_think` в тексте промпта.
+Остальные профили продолжают использовать `json_schema`.
+Спецификация: [JSON Output](https://api-docs.deepseek.com/guides/json_mode/) и
+[Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode/).
 
 ## Decision
 
