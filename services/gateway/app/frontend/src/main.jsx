@@ -111,7 +111,7 @@ function App() {
   const speaker = useMemo(() => createSpeaker(user?.id), [user?.id]);
   useEffect(() => {if (!settings.voice) speaker.cancel();}, [settings.voice, speaker]);
   useEffect(() => () => speaker.cancel(), [speaker]);
-  const knownNotices = useRef(new Set()), noticesReady = useRef(false), activeJobs = useRef(new Set()), completedJobs = useRef(new Set()), acceptEvent = useRef(eventGate()), latest = useRef({});
+  const knownNotices = useRef(new Set()), noticesReady = useRef(false), activeJobs = useRef(new Map()), completedJobs = useRef(new Set()), acceptEvent = useRef(eventGate()), latest = useRef({});
   const pendingSend = useRef(null);
   const setError = exception => {if (exception) setErrors(current => addError(current, exception));};
   const fail = exception => setError(exception);
@@ -126,14 +126,15 @@ function App() {
     setRecords(plans); setReminderRecords(reminders); setTaskRecords(tasks); setNotices(reminderData); setRevision(value => value + 1);
   };
   const loadHistory = (earlier = false, replace = false) => historyPager.current.load({older:earlier, replace});
+  const updateBusy = () => setBusy(activeJobs.current.size ? ([...activeJobs.current.values()].includes('transcription') ? 'transcription' : 'assistant') : false);
   const handleJob = async job => {
     const id = job.id || job.job_id;
-    if (completedJobs.current.has(id)) {activeJobs.current.delete(id); setBusy(activeJobs.current.size > 0); return;}
-    if (!['succeeded', 'failed', 'cancelled'].includes(job.status)) {activeJobs.current.add(id); setBusy(true); return;}
+    if (completedJobs.current.has(id)) {activeJobs.current.delete(id); updateBusy(); return;}
+    if (!['succeeded', 'failed', 'cancelled'].includes(job.status)) {activeJobs.current.set(id, job.kind || activeJobs.current.get(id) || 'assistant'); updateBusy(); return;}
     activeJobs.current.delete(id); completedJobs.current.add(id);
     const assistantId = job.result?.assistant_job_id;
-    if (job.status === 'succeeded' && assistantId && !completedJobs.current.has(assistantId)) activeJobs.current.add(assistantId);
-    setBusy(activeJobs.current.size > 0);
+    if (job.status === 'succeeded' && assistantId && !completedJobs.current.has(assistantId)) activeJobs.current.set(assistantId, 'assistant');
+    updateBusy();
     if (job.status === 'cancelled') return;
     if (job.status === 'failed') {if (job.result?.message_id) await loadHistory(); else setError(jobErrorMessage(job.error)); return;}
     if (assistantId) {
@@ -148,9 +149,9 @@ function App() {
   const reconcile = async () => {
     const [chat, jobs] = await Promise.all([api('/api/v1/chat'), collectPages(api, '/api/v1/jobs?status=active'), loadHistory(false, true), reloadOverview()]);
     setPending(Boolean(chat.pending));
-    for (const id of activeJobs.current) await handleJob(await api(`/api/v1/jobs/${id}`));
+    for (const id of activeJobs.current.keys()) await handleJob(await api(`/api/v1/jobs/${id}`));
     for (const job of jobs) await handleJob(job);
-    setBusy(activeJobs.current.size > 0);
+    updateBusy();
   };
   useEffect(() => {document.documentElement.dataset.theme = settings.theme; const secure = location.protocol === 'https:' ? '; Secure' : ''; document.cookie = `golos_ui=${encodeURIComponent(JSON.stringify(settings))}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;}, [settings]);
   useEffect(() => {if (!mock) api('/api/v1/auth/me').then(setUser).catch(exception => {if (exception.status !== 401) setError(exception.message);});}, []);
@@ -178,17 +179,17 @@ function App() {
   }, [user?.id]);
   const send = async text => {
     if (mock || !connected || busy) return;
-    setBusy(true); setError('');
+    setBusy('assistant'); setError('');
     let accepted = false;
     if (pendingSend.current?.text !== text) pendingSend.current = {text, request_id:randomUUID()};
-    try {const job = await api('/api/v1/chat/messages', {method:'POST',body:JSON.stringify(pendingSend.current)}); accepted = true; pendingSend.current = null; activeJobs.current.add(job.job_id); await handleJob(await api(`/api/v1/jobs/${job.job_id}`)); await loadHistory(); return true;}
+    try {const job = await api('/api/v1/chat/messages', {method:'POST',body:JSON.stringify(pendingSend.current)}); accepted = true; pendingSend.current = null; activeJobs.current.set(job.job_id, 'assistant'); await handleJob(await api(`/api/v1/jobs/${job.job_id}`)); await loadHistory(); return true;}
     catch (exception) {fail(exception); setBusy(false); return accepted;}
   };
   const upload = async (file, audioError) => {
     if (audioError) return setError(audioError);
     if (!file || mock || busy || !connected) return;
-    setBusy(true); setError('');
-    try {const body=new FormData(); body.append('file',file,file.name || 'recording.webm'); const job=await api('/api/v1/audio',{method:'POST',headers:{'Idempotency-Key':randomUUID()},body}); activeJobs.current.add(job.job_id); await handleJob(await api(`/api/v1/jobs/${job.job_id}`));}
+    setBusy('transcription'); setError('');
+    try {const body=new FormData(); body.append('file',file,file.name || 'recording.webm'); const job=await api('/api/v1/audio',{method:'POST',headers:{'Idempotency-Key':randomUUID()},body}); activeJobs.current.set(job.job_id, 'transcription'); await handleJob(await api(`/api/v1/jobs/${job.job_id}`));}
     catch (exception) {fail(exception); setBusy(false);}
   };
   const login = async (mode, data) => setUser(await api(`/api/v1/auth/${mode}`, {method: 'POST', body: JSON.stringify(data)}));
