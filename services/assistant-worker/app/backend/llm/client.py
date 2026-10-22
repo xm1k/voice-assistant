@@ -3,12 +3,38 @@
 import json
 import logging
 import os
+import time
 import uuid
 
 import httpx
 from pydantic import ValidationError
 
-from backend.common.config import configuration
+from backend.common.config import configuration, llm_profiles
+
+_PROVIDER_CACHE: dict = {"name": None, "at": 0.0}
+_CACHE_TTL = 30
+
+
+async def _active_llm_config():
+    now_ts = time.monotonic()
+    profiles = llm_profiles()
+    cached = _PROVIDER_CACHE["name"]
+    if cached is not None and now_ts - _PROVIDER_CACHE["at"] < _CACHE_TTL:
+        return profiles.get(cached) or profiles[next(iter(profiles))]
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(
+                os.getenv("CORE_URL", "http://core:8000") + "/internal/settings",
+                headers={"X-Internal-Token": os.environ["INTERNAL_TOKEN"]},
+            )
+            r.raise_for_status()
+            name = r.json().get("llm_provider") or next(iter(profiles))
+    except Exception:
+        name = cached or next(iter(profiles))
+    if name not in profiles:
+        name = next(iter(profiles))
+    _PROVIDER_CACHE.update({"name": name, "at": now_ts})
+    return profiles[name]
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +115,7 @@ async def complete(messages):
 
     from backend.common.schemas import Decision
 
-    config = configuration()["llm"]
+    config = await _active_llm_config()
     key = os.getenv(config["api_key_env"], "")
     if not key:
         raise RuntimeError("LLM provider key is missing")

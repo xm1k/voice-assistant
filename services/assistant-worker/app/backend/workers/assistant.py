@@ -107,6 +107,18 @@ async def consume_forever(queue, handler):
 
 
 async def main():
+    from backend.common.config import llm_profiles
+    profiles = [{"name": k, "label": v.get("label", k)} for k, v in llm_profiles().items()]
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.put(
+                os.getenv("CORE_URL", "http://core:8000") + "/internal/settings/providers",
+                json={"profiles": profiles},
+                headers={"X-Internal-Token": os.environ["INTERNAL_TOKEN"]},
+            )
+        logger.info("Registered %d LLM profiles with core", len(profiles))
+    except Exception:
+        logger.warning("Could not register LLM profiles with core")
     logger.info("Assistant worker starting queue=chat")
     await consume_forever("chat", handle_job)
 

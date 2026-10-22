@@ -17,7 +17,7 @@ from backend.chat.domain import (
     records,
     resolve_record,
 )
-from backend.chat.models import Chat, Event, Job, Message, Notification, Outbox, Receipt
+from backend.chat.models import Chat, Event, Job, Message, Notification, Outbox, Receipt, Setting
 from backend.chat.pagination import page
 from backend.chat.presentation import ACTIONS, confirmation, record_card, visible_cards
 from backend.chat.responses import (
@@ -766,6 +766,63 @@ def job_exhausted(job_id: str, body: Result):
             "ok": True,
             "audio_path": item.input.get("audio_path") if item.kind == "transcription" else None,
         }
+
+
+def _get_setting(db, key, default=""):
+    row = db.get(Setting, key)
+    return row.value if row else default
+
+
+def _set_setting(db, key, value):
+    existing = db.get(Setting, key)
+    if existing:
+        existing.value = value
+    else:
+        db.add(Setting(key=key, value=value))
+
+
+class SettingsInput(Strict):
+    llm_provider: str
+
+
+class ProvidersInput(Strict):
+    profiles: list[dict]
+
+
+@app.get("/api/v1/settings")
+def get_settings(user=Depends(identity)):
+    with Session() as db:
+        providers = json.loads(_get_setting(db, "llm_providers", "[]"))
+        provider = _get_setting(db, "llm_provider") or (providers[0]["name"] if providers else "")
+        return {"llm_provider": provider, "llm_providers": providers}
+
+
+@app.put("/api/v1/settings")
+def update_settings(body: SettingsInput, user=Depends(identity)):
+    with Session.begin() as db:
+        providers = json.loads(_get_setting(db, "llm_providers", "[]"))
+        available = [p["name"] for p in providers]
+        if available and body.llm_provider not in available:
+            raise HTTPException(422, "Unknown provider")
+        _set_setting(db, "llm_provider", body.llm_provider)
+        return {"llm_provider": body.llm_provider}
+
+
+@app.get("/internal/settings", dependencies=[Depends(internal)])
+def internal_get_settings():
+    with Session() as db:
+        providers = json.loads(_get_setting(db, "llm_providers", "[]"))
+        provider = _get_setting(db, "llm_provider") or (providers[0]["name"] if providers else "")
+        return {"llm_provider": provider}
+
+
+@app.put("/internal/settings/providers", dependencies=[Depends(internal)])
+def register_providers(body: ProvidersInput):
+    with Session.begin() as db:
+        _set_setting(db, "llm_providers", json.dumps(body.profiles))
+        if not _get_setting(db, "llm_provider") and body.profiles:
+            _set_setting(db, "llm_provider", body.profiles[0]["name"])
+    return {"ok": True}
 
 
 @app.get("/internal/audio/references", dependencies=[Depends(internal)])
