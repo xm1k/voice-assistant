@@ -74,7 +74,66 @@ export function createHistoryPager(api, onChange, initial = {}) {
 }
 
 export function jobErrorMessage(error) {
-  if (/\b402\b|Payment Required/i.test(error || '')) return 'Провайдер модели отклонил запрос по оплате. Проверьте баланс и лимит оплаты ключа API у провайдера. Изменения не сохранены.';
-  if (/https?:\/\/|validation error|Traceback/i.test(error || '')) return 'Не удалось обработать запрос. Проверьте доступность модели и попробуйте ещё раз. Изменения не сохранены.';
-  return error || 'Запрос отменён или завершился ошибкой. Попробуйте ещё раз.';
+  return errorMessage(error);
+}
+
+const fieldNames = {title:'Название', start_at:'Начало', end_at:'Окончание', remind_at:'Время напоминания', timezone:'Часовой пояс', username:'Логин', password:'Пароль', due_date:'Срок', period_start:'Начало периода', period_end:'Конец периода', work_start:'Начало рабочего интервала', work_end:'Конец рабочего интервала', recurrence:'Повторение'};
+const knownMessages = {
+  'Invalid credentials':'Неверный логин или пароль.',
+  'Username already registered':'Этот логин уже занят.',
+  'Session expired':'Сессия истекла. Войдите снова.',
+  'Authentication required':'Войдите в аккаунт.',
+  'Invalid session':'Войдите в аккаунт снова.',
+  'Audio exceeds 25 MB':'Аудиофайл должен быть не больше 25 МБ.',
+  'Audio is empty':'Аудиофайл пуст. Запишите аудио заново.',
+  'Meeting requires start_at < end_at':'Окончание встречи должно быть позже начала.',
+  'Empty title':'Укажите название записи.',
+  'Invalid timezone':'Укажите существующий часовой пояс.',
+  'work_end must exceed work_start':'Конец рабочего интервала должен быть позже начала.',
+};
+
+function safeMessage(value) {
+  if (typeof value !== 'string') return '';
+  if (knownMessages[value]) return knownMessages[value];
+  if (/\b402\b|Payment Required/i.test(value)) return 'Провайдер модели отклонил запрос по оплате. Проверьте баланс и лимит ключа API. Изменения не сохранены.';
+  if (!/[а-яё]/i.test(value) || /https?:\/\/|Traceback|validation error|input_value|Bearer|api[_-]?key|sk-[a-z0-9]|[{}]|\btoken\b/i.test(value)) return '';
+  return value.slice(0, 2000);
+}
+
+export function errorMessage(error, status = error?.status) {
+  const detail = error?.detail ?? error;
+  const issues = Array.isArray(detail) ? detail : detail?.errors;
+  if (Array.isArray(issues) && issues.length) {
+    return [...new Set(issues.map(issue => {
+      const name = [...(issue.loc || [])].reverse().map(part => fieldNames[part]).find(Boolean);
+      const code = issue.code || issue.type;
+      const reason = safeMessage(issue.message || issue.msg) || ({missing:'Обязательное поле не заполнено.', string_too_short:'Значение слишком короткое.', string_too_long:'Значение слишком длинное.', extra_forbidden:'Неизвестное поле.', literal_error:'Выберите допустимое значение.'}[code]) || 'Проверьте значение.';
+      return name ? `${name}: ${reason}` : reason;
+    }))].join(' ');
+  }
+  const message = safeMessage(typeof detail === 'string' ? detail : detail?.message) || safeMessage(error?.message);
+  if (message) return message;
+  return ({401:'Не удалось войти. Проверьте данные или войдите снова.', 403:'Недостаточно прав для этого действия.', 404:'Запись больше недоступна.', 409:'Данные изменились. Обновите страницу и повторите действие.', 413:'Файл слишком большой.', 422:'Проверьте заполненные поля.', 429:'Слишком много запросов. Попробуйте немного позже.', 500:'Ошибка сервера. Попробуйте позже.', 502:'Сервис временно недоступен. Попробуйте позже.', 503:'Сервис временно недоступен. Попробуйте позже.', 504:'Сервер не успел ответить. Попробуйте позже.'})[status] || 'Не удалось выполнить действие. Проверьте соединение и попробуйте ещё раз.';
+}
+
+export async function api(path, options = {}) {
+  const headers = {...options.headers};
+  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  let response;
+  try {response = await fetch(path, {...options, headers, credentials:'same-origin'});}
+  catch (cause) {throw new Error(errorMessage(cause), {cause});}
+  let data;
+  try {data = await response.json();}
+  catch {if (response.ok) throw new Error('Сервер вернул некорректный ответ. Обновите страницу и попробуйте снова.');}
+  if (!response.ok) {
+    const error = new Error(errorMessage(data?.detail ?? data, response.status));
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export function addError(current, exception) {
+  const message = errorMessage(exception);
+  return current.includes(message) ? current : [...current, message];
 }

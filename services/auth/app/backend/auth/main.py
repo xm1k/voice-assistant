@@ -1,3 +1,4 @@
+
 """Independent authentication service; initialize schema with migrate()."""
 
 import hashlib
@@ -10,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
+from backend.common.errors import install_validation_handler
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import DateTime, ForeignKey, String, create_engine, select
@@ -146,6 +148,7 @@ def establish(db, user, response):
 
 
 app = FastAPI(title="Golos Auth", openapi_url="/auth/openapi.json")
+install_validation_handler(app)
 
 
 @app.middleware("http")

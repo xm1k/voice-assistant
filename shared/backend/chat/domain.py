@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from backend.chat.models import Chat, Event, ExceptionRecord, Outbox, Record
+from backend.common.errors import validation_detail
 from backend.common.runtime import now, uid
 from backend.common.schemas import Query, RecordData
 
@@ -368,7 +369,7 @@ def validated(data):
     try:
         return RecordData.model_validate(data).model_dump(mode="json")
     except (ValidationError, ValueError, KeyError) as exc:
-        raise HTTPException(422, str(exc))
+        raise HTTPException(422, validation_detail(exc))
 
 
 def conflicts(db, user_id, item):
