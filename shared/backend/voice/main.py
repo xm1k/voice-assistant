@@ -1,3 +1,4 @@
+
 """Authenticated audio intake and bounded, provider-configured transcription."""
 
 import asyncio
@@ -12,6 +13,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from backend.common.config import configuration
+from backend.common.errors import install_validation_handler
 from backend.common.security import identity
 
 
@@ -63,6 +65,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url="/voice/docs", openapi_url="/voice/openapi.json")
+install_validation_handler(app)
 MAX_BYTES = 25 * 1024 * 1024
 _model = None
 _model_key = None

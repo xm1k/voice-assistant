@@ -5,8 +5,7 @@ import logging
 import os
 
 import httpx
-
-from backend.llm.client import InvalidModelResponse, complete, run_decision
+from backend.llm.client import InvalidModelResponse, StaleJob, complete, run_decision
 from backend.llm.prompt import system_prompt
 
 logger = logging.getLogger(__name__)
@@ -62,7 +61,16 @@ async def handle_job(payload):
             {"role": item["role"], "content": item.get("text", item.get("content", ""))}
             for item in context["messages"]
         )
-        decision = await run_decision(messages, complete, query)
+        async def validate(decision):
+            await core(f"/internal/jobs/{job_id}/validate", {
+                "claim_token": context["claim_token"], "decision": decision,
+            })
+
+        decision = await run_decision(messages, complete, query, validate)
+
+    except StaleJob:
+        logger.info("Discarding stale job id=%s", job_id)
+        return
 
     except Exception as exc:
         transient = isinstance(exc, (httpx.RequestError, TimeoutError)) or (

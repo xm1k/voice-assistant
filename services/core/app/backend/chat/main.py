@@ -1,14 +1,9 @@
 import asyncio
 import hashlib
 import json
-import os
 from datetime import date, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi import Query as Param
-from pydantic import Field, ValidationError
-from sqlalchemy import select
-
+from backend.chat.decisions import apply_decision
 from backend.chat.domain import (
     change,
     event,
@@ -17,9 +12,18 @@ from backend.chat.domain import (
     records,
     resolve_record,
 )
-from backend.chat.models import Chat, Event, Job, Message, Notification, Outbox, Receipt, Setting
+from backend.chat.models import (
+    Chat,
+    Event,
+    Job,
+    Message,
+    Notification,
+    Outbox,
+    Receipt,
+    Setting,
+)
 from backend.chat.pagination import page
-from backend.chat.presentation import ACTIONS, confirmation, record_card, visible_cards
+from backend.chat.presentation import confirmation, visible_cards
 from backend.chat.responses import (
     ChatOutput,
     JobAccepted,
@@ -29,12 +33,37 @@ from backend.chat.responses import (
     Page,
     RecordOutput,
 )
+from backend.common.errors import (
+    install_validation_handler,
+    public_validation_message,
+    validation_detail,
+)
 from backend.common.runtime import Session, now, uid
 from backend.common.schemas import Decision, Fields, Query, RecordData, Strict
-from backend.common.security import check_origin, identity, internal, validate_session
+from backend.common.security import identity, internal, validate_session
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi import Query as Param
+from pydantic import Field, ValidationError
+from sqlalchemy import select
 
 app = FastAPI(title="Golos Domain API", version="1.0.0")
+install_validation_handler(app)
 TERMINAL = ("succeeded", "failed", "cancelled")
+
+
+def lease_active(item):
+    if not item.lease_until:
+        return False
+    expiry = item.lease_until
+    return (expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)) > now()
 
 
 def chat(db, user_id):
@@ -264,7 +293,7 @@ def list_records(
             period_end=period_end,
         )
     except ValidationError as exc:
-        raise HTTPException(422, str(exc))
+        raise HTTPException(422, validation_detail(exc)) from exc
     with Session() as db:
         items = records(db, user["id"], query, user["timezone"], default_recurrence_window=True)
         # JSON converts tuple anchor to list; use one sortable string.
@@ -617,6 +646,41 @@ def retry_job(job_id: str, body: Retry):
         return job_output(item)
 
 
+class DecisionCheck(Strict):
+    claim_token: str
+    decision: dict
+
+
+@app.post("/internal/jobs/{job_id}/validate", dependencies=[Depends(internal)])
+def validate_job_decision(job_id: str, body: DecisionCheck):
+    with Session.begin() as db:
+        item = db.get(Job, job_id)
+        if not item:
+            raise HTTPException(409, {"code": "stale_claim", "message": "Задание больше недоступно."})
+        # Lock order matches result(): chat first, then refresh the job.
+        current = db.scalar(select(Chat).where(Chat.id == item.user_id).with_for_update())
+        db.refresh(item)
+        if (
+            not current or item.kind != "assistant" or item.status != "running"
+            or item.generation != current.generation or item.claim_token != body.claim_token
+            or not lease_active(item)
+        ):
+            raise HTTPException(409, {"code": "stale_claim", "message": "Задание уже отменено или передано другому обработчику."})
+        try:
+            decision = Decision.model_validate(body.decision)
+            if decision.type == "query":
+                raise HTTPException(422, "Unresolved model query")
+            # Every database effect, including flush, outbox and events, is rolled back.
+            preview = db.begin_nested()
+            try:
+                apply_decision(db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow"))
+            finally:
+                preview.rollback()
+        except (ValidationError, HTTPException, ValueError) as exc:
+            raise HTTPException(422, validation_detail(exc)) from exc
+        return {"valid": True}
+
+
 @app.post("/internal/jobs/{job_id}/result", dependencies=[Depends(internal)])
 def result(job_id: str, body: Result):
     with Session.begin() as db:
@@ -627,7 +691,7 @@ def result(job_id: str, body: Result):
         db.refresh(item)
         if item.status in TERMINAL:
             return job_output(item)
-        if item.status != "running" or not body.claim_token or body.claim_token != item.claim_token:
+        if item.status != "running" or not body.claim_token or body.claim_token != item.claim_token or not lease_active(item):
             raise HTTPException(409, "Stale job lease")
         if item.generation != current.generation:
             item.status = "cancelled"
@@ -660,59 +724,9 @@ def result(job_id: str, body: Result):
                 if decision.type == "query":
                     raise HTTPException(422, "Unresolved model query")
                 with db.begin_nested():
-                    changes = []
-                    cards = []
-                    seen_refs = set()
-                    for ref in decision.record_refs:
-                        key = (ref.id, ref.occurrence_at)
-                        if key not in seen_refs:
-                            cards.append(
-                                record_card(
-                                    "found",
-                                    resolve_record(
-                                        db,
-                                        item.user_id,
-                                        ref.id,
-                                        version=ref.version,
-                                        occurrence_at=ref.occurrence_at,
-                                    ),
-                                )
-                            )
-                            seen_refs.add(key)
-                    for command in decision.commands:
-                        deleted_snapshot = (
-                            resolve_record(
-                                db,
-                                item.user_id,
-                                command.id,
-                                version=command.version,
-                                occurrence_at=command.occurrence_at
-                                if command.scope == "occurrence"
-                                else None,
-                            )
-                            if command.operation == "delete"
-                            else None
-                        )
-                        fields = command.fields.model_dump(mode="json", exclude_unset=True, exclude_none=True)
-                        fields.update({key: None for key in getattr(command, "clear_fields", [])})
-                        changes.append(
-                            change(
-                                db,
-                                item.user_id,
-                                command.operation,
-                                fields,
-                                command.id,
-                                command.version,
-                                command.scope,
-                                command.occurrence_at,
-                                item.input.get("timezone", "Europe/Moscow"),
-                            )
-                        )
-                        snapshot = changes[-1]
-                        if deleted_snapshot:
-                            snapshot = {**deleted_snapshot, "version": snapshot["version"], "conflicts": []}
-                        cards.append(record_card(ACTIONS[command.operation], snapshot))
-                    cards = visible_cards(cards)
+                    changes, cards = apply_decision(
+                        db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow")
+                    )
                     current.pending = (
                         {"question": decision.question, "context": decision.context}
                         if decision.type == "clarify"
@@ -738,10 +752,7 @@ def result(job_id: str, body: Result):
                         },
                     )
             except (ValidationError, HTTPException, ValueError) as exc:
-                item.status, item.error = (
-                    "failed",
-                    (str(exc.detail) if isinstance(exc, HTTPException) else str(exc))[:2000],
-                )
+                fail_with_message(db, current, item, public_validation_message(exc))
         event(db, item.user_id, "job", job_output(item))
         return job_output(item)
 

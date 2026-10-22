@@ -1,3 +1,4 @@
+
 """Scoped hybrid retrieval with versioned E5 embeddings."""
 
 import asyncio
@@ -10,10 +11,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Column, Integer, String, delete, select, text
 
 from backend.common.config import configuration
+from backend.common.errors import install_validation_handler
 from backend.common.runtime import Base, Session, engine
 from backend.common.security import internal
 
 app = FastAPI()
+install_validation_handler(app)
 _embedder = None
 _embed_lock = asyncio.Lock()
 

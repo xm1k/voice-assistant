@@ -1,13 +1,14 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import ChatHistory from './ChatHistory';
+import ErrorBoundary from './ErrorBoundary';
 import {createSpeaker} from './speech.js';
 import Calendar, {RecordEditor, recordDraft, draftFromRecord} from './Calendar';
 import Tasks from './Tasks';
 import Reminders from './Reminders';
 import {addDays, dateLabel, isoDate} from './dates';
 import './app.css';
-import {randomUUID, collectPages, createHistoryPager, eventGate, jobErrorMessage} from './network';
+import {randomUUID, collectPages, createHistoryPager, eventGate, jobErrorMessage, api, addError} from './network';
 
 const mock = import.meta.env.MODE === 'mock';
 const demoRecords = [
@@ -36,13 +37,8 @@ function readSettings() {
   catch { return {...defaultSettings}; }
 }
 
-async function api(path, options = {}) {
-  const headers = {...options.headers};
-  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const response = await fetch(path, {...options, headers, credentials: 'same-origin'});
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {const error = new Error(typeof data.detail === 'string' ? data.detail : data.detail?.message || `Не удалось выполнить запрос (${response.status})`); error.status = response.status; throw error;}
-  return data;
+function ErrorList({errors, onDismiss}) {
+  return <div className="error-list">{errors.map(message => <div key={message} className="error-notice" role="alert"><p>{message}</p><button type="button" aria-label="Закрыть сообщение об ошибке" onClick={() => onDismiss(message)}>×</button></div>)}</div>;
 }
 
 function IconButton({label, children, ...props}) {
@@ -70,7 +66,7 @@ function Composer({onSend, onAudio, busy, mockMode}) {
       recorder.current.start(); setRecording(true);
     } catch { onAudio(null, 'Разрешите доступ к микрофону или выберите аудиофайл.'); }
   };
-  const submit = event => {event.preventDefault(); if (recording) return stop(); if (text.trim()) {onSend(text.trim()); setText('');}};
+  const submit = async event => {event.preventDefault(); if (recording) return stop(); if (text.trim() && await onSend(text.trim())) setText('');};
   const keyDown = event => {
     if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -87,27 +83,27 @@ function Assistant({messages, pending, onSend, onAudio, busy, mockMode, records,
 
 function Settings({settings, setSettings, user, onTimezone, onNotifications, onClear, onLogout}) {
   const zones = useMemo(() => ['Europe/Moscow', 'UTC', ...(Intl.supportedValuesOf?.('timeZone') || [])].filter((zone, index, all) => all.indexOf(zone) === index), []);
-  const [timezone, setTimezone] = useState(user.timezone), [saved, setSaved] = useState(false);
+  const [timezone, setTimezone] = useState(user.timezone), [saved, setSaved] = useState(false), [error, setError] = useState('');
   const [provider, setProvider] = useState(''), [providers, setProviders] = useState([]), [providerSaved, setProviderSaved] = useState(false);
   const update = (key, value) => setSettings({...settings, [key]: value});
-  const saveTimezone = async () => {try {await onTimezone(timezone); setSaved(true); setTimeout(() => setSaved(false), 1500);} catch {setSaved(false);}};
-  useEffect(() => {if (!mock) api('/api/v1/settings').then(data => {setProvider(data.llm_provider || ''); setProviders(data.llm_providers || []);}).catch(() => {});}, []);
-  const saveProvider = async () => {try {await api('/api/v1/settings', {method: 'PUT', body: JSON.stringify({llm_provider: provider})}); setProviderSaved(true); setTimeout(() => setProviderSaved(false), 1500);} catch {}};
-  return <section className="page settings"><header><small>Ваш аккаунт</small><h1>Настройки</h1></header><div className="settings-section"><h2>Внешний вид</h2><p>Единственная визуальная настройка — тема приложения.</p><div className="theme-picker">{[['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([value, label]) => <button key={value} className={settings.theme === value ? 'active' : ''} onClick={() => update('theme', value)}>{label}</button>)}</div></div><div className="settings-section"><h2>Ассистент</h2><label className="toggle"><input type="checkbox" checked={settings.voice} onChange={event => update('voice', event.target.checked)} /><span>Озвучивать ответы</span></label>{'Notification' in window && <label className="toggle"><input type="checkbox" checked={settings.browserNotifications} onChange={event => onNotifications(event.target.checked)} /><span>Уведомления браузера</span></label>}</div>{providers.length > 0 && <div className="settings-section"><h2>Провайдер ИИ</h2><p>Языковая модель, которую использует ассистент.</p><div className="inline-control"><select value={provider} onChange={event => setProvider(event.target.value)}>{providers.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}</select><button className="secondary-button" onClick={saveProvider}>{providerSaved ? 'Сохранено' : 'Сохранить'}</button></div></div>}<div className="settings-section"><h2>Время</h2><p>Часовой пояс используется для голосовых команд и календаря.</p><div className="inline-control"><select value={timezone} onChange={event => setTimezone(event.target.value)}>{zones.map(zone => <option key={zone}>{zone}</option>)}</select><button className="secondary-button" onClick={saveTimezone}>{saved ? 'Сохранено' : 'Сохранить'}</button></div></div><div className="settings-section"><h2>История</h2><p>Ассистент хранит одну непрерывную историю и использует последние сообщения и выбранные записи как контекст.</p><button className="secondary-button" onClick={onClear}>Очистить историю и контекст</button></div><div className="settings-section account-row"><div><h2>{user.username}</h2><p>{user.timezone}</p></div><button className="danger-button" onClick={onLogout}>Выйти из аккаунта</button></div></section>;
+  const saveTimezone = async () => {try {setError(''); await onTimezone(timezone); setSaved(true); setTimeout(() => setSaved(false), 1500);} catch (exception) {setSaved(false); setError(exception.message);}};
+  useEffect(() => {if (!mock) api('/api/v1/settings').then(data => {setProvider(data.llm_provider || ''); setProviders(data.llm_providers || []);}).catch(exception => setError(exception.message));}, []);
+  const saveProvider = async () => {try {setError(''); await api('/api/v1/settings', {method: 'PUT', body: JSON.stringify({llm_provider: provider})}); setProviderSaved(true); setTimeout(() => setProviderSaved(false), 1500);} catch (exception) {setProviderSaved(false); setError(exception.message);}};
+  return <section className="page settings">{error && <p className="form-error" role="alert">{error}</p>}<header><small>Ваш аккаунт</small><h1>Настройки</h1></header><div className="settings-section"><h2>Внешний вид</h2><p>Единственная визуальная настройка — тема приложения.</p><div className="theme-picker">{[['system', 'Системная'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([value, label]) => <button key={value} className={settings.theme === value ? 'active' : ''} onClick={() => update('theme', value)}>{label}</button>)}</div></div><div className="settings-section"><h2>Ассистент</h2><label className="toggle"><input type="checkbox" checked={settings.voice} onChange={event => update('voice', event.target.checked)} /><span>Озвучивать ответы</span></label>{'Notification' in window && <label className="toggle"><input type="checkbox" checked={settings.browserNotifications} onChange={event => onNotifications(event.target.checked)} /><span>Уведомления браузера</span></label>}</div>{providers.length > 0 && <div className="settings-section"><h2>Провайдер ИИ</h2><p>Языковая модель, которую использует ассистент.</p><div className="inline-control"><select value={provider} onChange={event => setProvider(event.target.value)}>{providers.map(p => <option key={p.name} value={p.name}>{p.label}</option>)}</select><button className="secondary-button" onClick={saveProvider}>{providerSaved ? 'Сохранено' : 'Сохранить'}</button></div></div>}<div className="settings-section"><h2>Время</h2><p>Часовой пояс используется для голосовых команд и календаря.</p><div className="inline-control"><select value={timezone} onChange={event => setTimezone(event.target.value)}>{zones.map(zone => <option key={zone}>{zone}</option>)}</select><button className="secondary-button" onClick={saveTimezone}>{saved ? 'Сохранено' : 'Сохранить'}</button></div></div><div className="settings-section"><h2>История</h2><p>Ассистент хранит одну непрерывную историю и использует последние сообщения и выбранные записи как контекст.</p><button className="secondary-button" onClick={onClear}>Очистить историю и контекст</button></div><div className="settings-section account-row"><div><h2>{user.username}</h2><p>{user.timezone}</p></div><button className="danger-button" onClick={onLogout}>Выйти из аккаунта</button></div></section>;
 }
 
 function Login({onLogin}) {
   const [registering, setRegistering] = useState(false), [error, setError] = useState('');
   const zones = useMemo(() => ['Europe/Moscow', 'UTC', ...(Intl.supportedValuesOf?.('timeZone') || [])].filter((zone, index, array) => array.indexOf(zone) === index), []);
   const submit = async event => {event.preventDefault(); try {setError(''); await onLogin(registering ? 'register' : 'login', Object.fromEntries(new FormData(event.currentTarget)));} catch (exception) {setError(exception.message);}};
-  return <main className="login"><form onSubmit={submit}><span className="login-mark">г</span><h1>Голос</h1><p>Один помощник для задач, встреч и напоминаний.</p><label>Логин<input name="username" required minLength="3" autoComplete="username" /></label><label>Пароль<input name="password" type="password" required minLength="8" autoComplete="current-password" /></label>{registering && <label>Часовой пояс<select name="timezone" defaultValue="Europe/Moscow">{zones.map(zone => <option value={zone} key={zone}>{zone}</option>)}</select></label>}{error && <p className="form-error">{error}</p>}<button className="primary-action">{registering ? 'Создать аккаунт' : 'Войти'}</button><button type="button" className="text-action" onClick={() => setRegistering(!registering)}>{registering ? 'У меня есть аккаунт' : 'Создать аккаунт'}</button></form></main>;
+  return <main className="login"><form onSubmit={submit}><span className="login-mark">г</span><h1>Голос</h1><p>Один помощник для задач, встреч и напоминаний.</p><label>Логин<input name="username" required minLength="3" autoComplete="username" /></label><label>Пароль<input name="password" type="password" required minLength="8" autoComplete="current-password" /></label>{registering && <label>Часовой пояс<select name="timezone" defaultValue="Europe/Moscow">{zones.map(zone => <option value={zone} key={zone}>{zone}</option>)}</select></label>}{error && <p className="form-error" role="alert">{error}</p>}<button className="primary-action">{registering ? 'Создать аккаунт' : 'Войти'}</button><button type="button" className="text-action" onClick={() => setRegistering(!registering)}>{registering ? 'У меня есть аккаунт' : 'Создать аккаунт'}</button></form></main>;
 }
 
 function App() {
   const [user, setUser] = useState(mock ? {id: 'demo', username: 'Денис', timezone: 'Europe/Moscow'} : null);
   const [view, setView] = useState('assistant'), [pending, setPending] = useState(false), [records, setRecords] = useState(mock ? demoRecords : []), [taskRecords, setTaskRecords] = useState(mock ? demoRecords.filter(item => item.kind === 'task') : []), [notices, setNotices] = useState(mock ? demoNotices : []), [busy, setBusy] = useState(false), [settings, setSettings] = useState(readSettings());
   const [reminderRecords, setReminderRecords] = useState(mock ? demoRecords.filter(item => item.kind === 'reminder') : []);
-  const [error, setError] = useState(''), [connected, setConnected] = useState(mock), [revision, setRevision] = useState(0);
+  const [errors, setErrors] = useState([]), [connected, setConnected] = useState(mock), [revision, setRevision] = useState(0);
   const [history, setHistory] = useState({messages: mock ? [{id:'demo', role:'assistant', text:'Добрый день. Что запланируем?'}] : [], cursor:null, ready:mock, loadingOlder:false, revision:0});
   const {messages, cursor:historyCursor, ready:historyReady, loadingOlder, revision:historyRevision} = history;
   const historyPager = useRef(null);
@@ -116,7 +112,10 @@ function App() {
   useEffect(() => {if (!settings.voice) speaker.cancel();}, [settings.voice, speaker]);
   useEffect(() => () => speaker.cancel(), [speaker]);
   const knownNotices = useRef(new Set()), noticesReady = useRef(false), activeJobs = useRef(new Set()), completedJobs = useRef(new Set()), acceptEvent = useRef(eventGate()), latest = useRef({});
-  const fail = exception => {setError(exception.message || String(exception));};
+  const pendingSend = useRef(null);
+  const setError = exception => {if (exception) setErrors(current => addError(current, exception));};
+  const fail = exception => setError(exception);
+  const dismissError = message => setErrors(current => current.filter(item => item !== message));
   const reloadOverview = async () => {
     if (mock) return;
     const start = isoDate(new Date()), end = isoDate(addDays(new Date(), 90));
@@ -135,7 +134,8 @@ function App() {
     const assistantId = job.result?.assistant_job_id;
     if (job.status === 'succeeded' && assistantId && !completedJobs.current.has(assistantId)) activeJobs.current.add(assistantId);
     setBusy(activeJobs.current.size > 0);
-    if (job.status !== 'succeeded') {if (job.result?.message_id) await loadHistory(); else setError(jobErrorMessage(job.error)); return;}
+    if (job.status === 'cancelled') return;
+    if (job.status === 'failed') {if (job.result?.message_id) await loadHistory(); else setError(jobErrorMessage(job.error)); return;}
     if (assistantId) {
       // The server already persisted the transcript and queued the assistant.
       await Promise.all([loadHistory(), assistantId ? api(`/api/v1/jobs/${assistantId}`).then(handleJob) : Promise.resolve()]);
@@ -166,7 +166,7 @@ function App() {
           const update = JSON.parse(event.data); if (!acceptEvent.current(update.id)) return;
           if (update.type === 'message') historyPager.current.merge([update.data]);
           else if (update.type === 'job') latest.current.handleJob(update.data).catch(fail);
-          else if (update.type === 'history_cleared') {historyPager.current.reset(); speaker.cancel(); setPending(false); activeJobs.current.clear(); setBusy(false);}
+          else if (update.type === 'history_cleared') {historyPager.current.reset(); speaker.cancel(); setPending(false); activeJobs.current.clear(); pendingSend.current = null; setBusy(false);}
           else if (['notification', 'records_changed'].includes(update.type)) latest.current.reloadOverview().catch(fail);
         } catch (exception) {fail(exception);}
       };
@@ -179,8 +179,10 @@ function App() {
   const send = async text => {
     if (mock || !connected || busy) return;
     setBusy(true); setError('');
-    try {const job = await api('/api/v1/chat/messages', {method:'POST',body:JSON.stringify({text,request_id:randomUUID()})}); activeJobs.current.add(job.job_id); await handleJob(await api(`/api/v1/jobs/${job.job_id}`)); await loadHistory();}
-    catch (exception) {fail(exception); setBusy(false);}
+    let accepted = false;
+    if (pendingSend.current?.text !== text) pendingSend.current = {text, request_id:randomUUID()};
+    try {const job = await api('/api/v1/chat/messages', {method:'POST',body:JSON.stringify(pendingSend.current)}); accepted = true; pendingSend.current = null; activeJobs.current.add(job.job_id); await handleJob(await api(`/api/v1/jobs/${job.job_id}`)); await loadHistory(); return true;}
+    catch (exception) {fail(exception); setBusy(false); return accepted;}
   };
   const upload = async (file, audioError) => {
     if (audioError) return setError(audioError);
@@ -192,12 +194,12 @@ function App() {
   const login = async (mode, data) => setUser(await api(`/api/v1/auth/${mode}`, {method: 'POST', body: JSON.stringify(data)}));
   const logout = async () => {if (!mock) await api('/api/v1/auth/logout', {method: 'POST'}); location.reload();};
   const readNotice = async id => {if (!mock) await api(`/api/v1/notifications/${id}/read`, {method: 'POST'}); setNotices(current => current.map(item => item.id === id ? {...item, read: true} : item));};
-  const setBrowserNotifications = async enabled => {if (!enabled) return setSettings({...settings, browserNotifications: false}); if (!('Notification' in window)) return; const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission; setSettings({...settings, browserNotifications: permission === 'granted'});};
+  const setBrowserNotifications = async enabled => {if (!enabled) return setSettings({...settings, browserNotifications: false}); if (!('Notification' in window)) return; const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission; setSettings({...settings, browserNotifications: permission === 'granted'}); if (permission !== 'granted') setError('Разрешите уведомления для этого сайта в настройках браузера.');};
   const updateTimezone = async timezone => {if (mock) return setUser({...user, timezone}); setUser(await api('/api/v1/auth/me', {method: 'PATCH', body: JSON.stringify({timezone})})); await reloadOverview();};
-  const clearHistory = async () => {if (!window.confirm('Очистить историю разговора и текущий контекст? Задачи и встречи останутся.')) return; if (!mock) await api('/api/v1/chat/messages', {method: 'DELETE'}); historyPager.current.reset(); speaker.cancel(); setPending(false); setBusy(false); activeJobs.current.clear();};
-  if (!user) return <>{error && <p role="alert" className="form-error">{error}</p>}<Login onLogin={login} /></>;
+  const clearHistory = async () => {if (!window.confirm('Очистить историю разговора и текущий контекст? Задачи и встречи останутся.')) return; if (!mock) await api('/api/v1/chat/messages', {method: 'DELETE'}); historyPager.current.reset(); speaker.cancel(); setPending(false); setBusy(false); activeJobs.current.clear(); pendingSend.current = null;};
+  if (!user) return <><ErrorList errors={errors} onDismiss={dismissError} /><Login onLogin={login} /></>;
   const unread = notices.filter(item => !item.read).length;
-  return <div className="shell"><Navigation view={view} setView={setView} noticeCount={unread} user={user} /><main className="main">{error && <p role="alert" className="form-error">{error}</p>}{view === 'assistant' && <Assistant connected={connected} historyCursor={historyCursor} onEarlier={() => loadHistory(true)} historyReady={historyReady} loadingOlder={loadingOlder} historyRevision={historyRevision} messages={messages} pending={pending} onSend={send} onAudio={upload} busy={busy} mockMode={mock} records={records} timezone={user.timezone} onRecordsChanged={reloadOverview} />}{view === 'calendar' && <Calendar revision={revision} timezone={user.timezone} api={api} mockRecords={mock ? demoRecords : null} onChanged={reloadOverview} />}{view === 'tasks' && <Tasks records={taskRecords} timezone={user.timezone} api={api} onChanged={reloadOverview} mockMode={mock} />}{view === 'reminders' && <Reminders api={api} items={notices} records={reminderRecords} timezone={user.timezone} onRead={id => readNotice(id).catch(fail)} onChanged={reloadOverview} mockMode={mock} />}{view === 'settings' && <Settings settings={settings} setSettings={setSettings} user={user} onTimezone={timezone => updateTimezone(timezone).catch(exception => {fail(exception); throw exception;})} onNotifications={setBrowserNotifications} onClear={() => clearHistory().catch(fail)} onLogout={() => logout().catch(fail)} />}</main></div>;
+  return <div className="shell"><Navigation view={view} setView={setView} noticeCount={unread} user={user} /><main className="main"><ErrorList errors={errors} onDismiss={dismissError} />{view === 'assistant' && <Assistant connected={connected} historyCursor={historyCursor} onEarlier={() => loadHistory(true)} historyReady={historyReady} loadingOlder={loadingOlder} historyRevision={historyRevision} messages={messages} pending={pending} onSend={send} onAudio={upload} busy={busy} mockMode={mock} records={records} timezone={user.timezone} onRecordsChanged={reloadOverview} />}{view === 'calendar' && <Calendar revision={revision} timezone={user.timezone} api={api} mockRecords={mock ? demoRecords : null} onChanged={reloadOverview} />}{view === 'tasks' && <Tasks records={taskRecords} timezone={user.timezone} api={api} onChanged={reloadOverview} mockMode={mock} />}{view === 'reminders' && <Reminders api={api} items={notices} records={reminderRecords} timezone={user.timezone} onRead={id => readNotice(id).catch(fail)} onChanged={reloadOverview} mockMode={mock} />}{view === 'settings' && <Settings settings={settings} setSettings={setSettings} user={user} onTimezone={updateTimezone} onNotifications={enabled => setBrowserNotifications(enabled).catch(fail)} onClear={() => clearHistory().catch(fail)} onLogout={() => logout().catch(fail)} />}</main></div>;
 }
 
-createRoot(document.querySelector('#root')).render(<App />);
+createRoot(document.querySelector('#root')).render(<ErrorBoundary><App /></ErrorBoundary>);

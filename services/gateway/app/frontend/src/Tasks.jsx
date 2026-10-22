@@ -44,7 +44,7 @@ function TaskEditor({record, api, onClose, onSaved}) {
       <p className="form-note">Без срока задача сохранится во «Входящих» — дату можно добавить позже.</p>
       <label>Заметка<textarea rows="3" maxLength="5000" value={draft.notes} onChange={event => update('notes', event.target.value)} placeholder="Необязательно" /></label>
       {record?.recurrence && <p className="form-note">Изменение применяется только к выбранному повторению.</p>}
-      {error && <p className="form-error">{error}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
       <div className="modal-actions">{record && <button type="button" className="danger-button" disabled={saving} onClick={remove}>Удалить</button>}<span /><button className="primary-action" disabled={saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</button></div>
     </form>
   </div>;
@@ -104,7 +104,7 @@ export default function Tasks({records, timezone, api, onChanged, mockMode}) {
   return <section className="page tasks-page">
     <header className="page-title-row"><div><small>Личный список дел</small><h1>Задачи</h1><p className="task-summary">{active.length} в работе · {groups[0][2].length} просрочено · {groups[3][2].length} без срока</p></div><button className="primary-action" onClick={() => setEditor({})}>＋ <span>Добавить задачу</span></button></header>
     <form className="task-quick-add" onSubmit={quickAdd}><input value={quickTitle} onChange={event => setQuickTitle(event.target.value)} placeholder="Добавить во Входящие…" aria-label="Название новой задачи" /><button disabled={!quickTitle.trim() || working === 'new' || mockMode}>{working === 'new' ? 'Добавляю…' : 'Добавить'}</button></form>
-    {error && <p className="task-error">{error}</p>}
+    {error && <p className="task-error" role="alert">{error}</p>}
     <div className="tabs"><button className={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>В работе <span>{active.length}</span></button><button className={filter === 'completed' ? 'active' : ''} onClick={() => setFilter('completed')}>Архив <span>{completed.length}</span></button></div>
     {filter === 'active' ? <div className="task-groups">{groups.map(([id, title, items]) => items.length > 0 && <section className={`task-group ${id}`} key={id}><header><h2>{title}</h2><span>{items.length}</span></header><div className="task-list">{items.map(taskCard)}</div></section>)}{active.length === 0 && <div className="empty-card">Всё выполнено. Новые задачи без срока попадут во «Входящие».</div>}</div> : <section className="task-group archive"><header><h2>Выполненные</h2><span>{completed.length}</span></header><div className="task-list">{completed.length ? completed.map(taskCard) : <div className="empty-card">Архив пока пуст.</div>}</div></section>}
     {editor && <TaskEditor record={editor.record} api={api} onClose={() => setEditor(null)} onSaved={onChanged} />}
