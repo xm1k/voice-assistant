@@ -119,11 +119,12 @@ async def main():
     profiles = [{"name": k, "label": v.get("label", k)} for k, v in llm_profiles().items()]
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            await client.put(
+            r = await client.put(
                 os.getenv("CORE_URL", "http://core:8000") + "/internal/settings/providers",
                 json={"profiles": profiles},
                 headers={"X-Internal-Token": os.environ["INTERNAL_TOKEN"]},
             )
+            r.raise_for_status()
         logger.info("Registered %d LLM profiles with core", len(profiles))
     except Exception:
         logger.warning("Could not register LLM profiles with core")
