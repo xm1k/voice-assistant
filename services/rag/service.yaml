@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag
+  namespace: voice-assistant
+spec:
+  selector:
+    app: rag
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 31014
+  type: NodePort

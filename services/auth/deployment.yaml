@@ -1,0 +1,79 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: voice-assistant
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: docker.io/busybox
+          command: ['sh', '-c', 'until nc -z db 5432; do echo waiting for db; sleep 2; done']
+        - name: db-init
+          image: registry.registry.svc.cluster.local:5000/backend:latest
+          command: ["python", "-m", "backend.migrations.main"]
+          env:
+            - name: AUTH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: AUTH_DB_PASSWORD
+            - name: DOMAIN_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DOMAIN_DB_PASSWORD
+            - name: INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: INTERNAL_TOKEN
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: RABBITMQ_PASSWORD
+            - name: AUTH_DATABASE_URL
+              value: "postgresql+psycopg://golos_auth:$(AUTH_DB_PASSWORD)@db/golos_auth"
+            - name: DOMAIN_DATABASE_URL
+              value: "postgresql+psycopg://golos_domain:$(DOMAIN_DB_PASSWORD)@db/golos_domain"
+            - name: RABBITMQ_URL
+              value: "amqp://golos_v2:$(RABBITMQ_PASSWORD)@rabbitmq/"
+      containers:
+        - name: auth
+          image: registry.registry.svc.cluster.local:5000/backend:latest
+          command: ["uvicorn", "backend.auth.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AUTH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: AUTH_DB_PASSWORD
+            - name: AUTH_DATABASE_URL
+              value: "postgresql+psycopg://golos_auth:$(AUTH_DB_PASSWORD)@db/golos_auth"
+            - name: INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: INTERNAL_TOKEN
+            - name: COOKIE_SECURE
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /auth/openapi.json
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 10

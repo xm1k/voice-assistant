@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-v2
+  namespace: voice-assistant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-v2
+  namespace: voice-assistant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Shared by voice and transcription-worker. Use ReadWriteMany storage class on multi-node clusters.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: audio-v2
+  namespace: voice-assistant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: whisper-models-v2
+  namespace: voice-assistant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Shared by core and rag. Use ReadWriteMany storage class on multi-node clusters.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: search-models-v2
+  namespace: voice-assistant
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

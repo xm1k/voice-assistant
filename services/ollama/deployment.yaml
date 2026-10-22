@@ -23,7 +23,7 @@ spec:
             - |
               ollama serve &
               until ollama list > /dev/null 2>&1; do sleep 2; done
-              ollama list | grep -q "qwen2.5" || ollama pull qwen2.5:7b
+              ollama list | grep -q "qwen3:14b" || ollama pull qwen3:14b
               wait
           ports:
             - containerPort: 11434

@@ -26,7 +26,7 @@ spec:
             - name: BASE_URL
               value: "http://ollama.voice-assistant.svc.cluster.local:11434"
             - name: CUSTOM_MODELS
-              value: "-all,+qwen2.5:7b"
+              value: "-all,+qwen2.5:14b"
             - name: DEFAULT_MODEL
               value: "qwen2.5:7b"
             - name: CODE
