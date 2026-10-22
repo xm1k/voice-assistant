@@ -5,7 +5,6 @@ import logging
 import os
 
 import httpx
-
 from backend.voice.main import transcribe, trusted_audio_path
 
 logger = logging.getLogger(__name__)
@@ -69,21 +68,11 @@ async def handle_job(payload):
         trusted_audio_path(context["audio_path"]).unlink(missing_ok=True)
 
 
-async def consume_forever(queue, handler):
-    from backend.chat.broker import consume
-    while True:
-        try:
-            await consume(queue, handler)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Consumer exited queue=%s, reconnecting in 5s", queue)
-            await asyncio.sleep(5)
-
-
 async def main():
     logger.info("Transcription worker starting queue=transcription")
-    await consume_forever("transcription", handle_job)
+    from backend.chat.broker import consume
+
+    await consume("transcription", handle_job)
 
 
 if __name__ == "__main__":

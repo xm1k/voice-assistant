@@ -102,18 +102,6 @@ async def handle_job(payload):
         raise
 
 
-async def consume_forever(queue, handler):
-    from backend.chat.broker import consume
-    while True:
-        try:
-            await consume(queue, handler)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Consumer exited queue=%s, reconnecting in 5s", queue)
-            await asyncio.sleep(5)
-
-
 async def main():
     from backend.common.config import llm_profiles
     profiles = [{"name": k, "label": v.get("label", k)} for k, v in llm_profiles().items()]
@@ -129,7 +117,9 @@ async def main():
     except Exception:
         logger.warning("Could not register LLM profiles with core")
     logger.info("Assistant worker starting queue=chat")
-    await consume_forever("chat", handle_job)
+    from backend.chat.broker import consume
+
+    await consume("chat", handle_job)
 
 
 if __name__ == "__main__":

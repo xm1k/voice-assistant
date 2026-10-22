@@ -1,6 +1,7 @@
 """Durable delivery with outbox, confirmed publishes, bounded retries and dead letters."""
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -8,6 +9,7 @@ from datetime import timedelta, timezone
 
 import aio_pika
 import httpx
+from pamqp.commands import Basic
 from sqlalchemy import select
 
 from backend.chat.domain import event, instant, records
@@ -29,22 +31,38 @@ async def topology(channel, name):
     return await channel.declare_queue(name, durable=True)
 
 
-async def publish(queue, payload):
-    connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
+async def _confirmed_publish(channel, message, destination):
+    confirmation = await channel.default_exchange.publish(
+        message, routing_key=destination, mandatory=True, timeout=30
+    )
+    if not isinstance(confirmation, Basic.Ack):
+        raise RuntimeError("RabbitMQ did not confirm publication")
+
+
+async def _publish_message(queue, destination, message):
+    connection = None
     try:
-        channel = await connection.channel(publisher_confirms=True)
-        await topology(channel, queue)
-        await channel.default_exchange.publish(
-            aio_pika.Message(
-                json.dumps(payload).encode(),
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=queue,
-            mandatory=True,
-        )
+        async with asyncio.timeout(30):
+            connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"], timeout=30)
+            channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
+            await topology(channel, queue)
+            await _confirmed_publish(channel, message, destination)
     finally:
-        await connection.close()
+        if connection is not None:
+            async with asyncio.timeout(30):
+                await connection.close()
+
+
+async def publish(queue, payload):
+    await _publish_message(
+        queue,
+        queue,
+        aio_pika.Message(
+            json.dumps(payload).encode(),
+            content_type="application/json",
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+        ),
+    )
 
 
 async def exhausted(payload, queue):
@@ -70,66 +88,74 @@ async def exhausted(payload, queue):
             trusted_audio_path(response.json()["audio_path"]).unlink(missing_ok=True)
 
 
-async def _route_failed(queue, destination, body, attempt):
-    """Publish a failed message to retry/dead using a fresh connection independent of the consumer."""
-    conn = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
-    try:
-        ch = await conn.channel(publisher_confirms=True)
-        await topology(ch, queue)
-        await ch.default_exchange.publish(
-            aio_pika.Message(
-                body,
-                headers={"attempt": attempt},
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=destination,
-            mandatory=True,
-        )
-    finally:
-        await conn.close()
+async def _route_failed(queue, destination, message, attempt):
+    routed = copy.copy(message)
+    routed.headers = {**(message.headers or {}), "attempt": attempt}
+    await _publish_message(queue, destination, routed)
 
 
 async def consume(queue, handler):
-    connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
-    try:
-        channel = await connection.channel(publisher_confirms=True)
-        await channel.set_qos(prefetch_count=1)
-        source = await topology(channel, queue)
-        async with source.iterator() as messages:
-            async for message in messages:
-                payload = None
-                attempt = int((message.headers or {}).get("attempt", 0))
+    """Own delivery settlement and reconnection for every worker queue."""
+    while True:
+        connection = None
+        try:
+            async with asyncio.timeout(30):
+                connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"], timeout=30)
+                channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
+                await channel.set_qos(prefetch_count=1)
+                source = await topology(channel, queue)
+            async with source.iterator() as messages:
+                async for message in messages:
+                    attempt = int((message.headers or {}).get("attempt", 0))
+                    try:
+                        payload = json.loads(message.body)
+                    except Exception:
+                        await message.ack()
+                        continue
+                    try:
+                        async with asyncio.timeout(600):
+                            await handler(payload)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        blocked = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 409
+                        next_attempt = attempt + (0 if blocked else 1)
+                        destination = queue + (".dead" if next_attempt >= 5 else ".retry")
+                        logger.warning(
+                            "Delivery failed queue=%s attempt=%s error=%s",
+                            queue,
+                            next_attempt,
+                            type(exc).__name__,
+                        )
+                        try:
+                            await _route_failed(queue, destination, message, next_attempt)
+                            if next_attempt >= 5:
+                                async with asyncio.timeout(30):
+                                    await exhausted(payload, queue)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            try:
+                                async with asyncio.timeout(30):
+                                    await message.nack(requeue=True)
+                            except Exception:
+                                logger.exception("Unable to requeue delivery queue=%s", queue)
+                            raise
+                    # Keep ACK errors outside the handler-error branch: the durable effect may exist.
+                    async with asyncio.timeout(30):
+                        await message.ack()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Consumer disconnected queue=%s", queue)
+        finally:
+            if connection is not None:
                 try:
-                    payload = json.loads(message.body)
+                    async with asyncio.timeout(30):
+                        await connection.close()
                 except Exception:
-                    await message.ack()
-                    continue
-                # Ack before handler so RabbitMQ consumer timeout never fires during slow LLM calls.
-                # Retry/dead routing is handled manually below on failure.
-                await message.ack()
-                try:
-                    await handler(payload)
-                except asyncio.CancelledError:
-                    try:
-                        await _route_failed(queue, queue + ".retry", message.body, attempt + 1)
-                    except Exception:
-                        logger.warning("Failed to route cancelled message to retry, queue=%s", queue)
-                    raise
-                except Exception as exc:
-                    blocked = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 409
-                    next_attempt = attempt + (0 if blocked else 1)
-                    destination = queue + ".dead" if next_attempt >= 5 else queue + ".retry"
-                    logger.warning(
-                        "Delivery failed queue=%s attempt=%s error=%s", queue, next_attempt, type(exc).__name__
-                    )
-                    if next_attempt >= 5:
-                        await exhausted(payload, queue)
-                    try:
-                        await _route_failed(queue, destination, message.body, next_attempt)
-                    except Exception:
-                        logger.exception("Failed to route failed message to %s, message lost", destination)
-    finally:
-        await connection.close()
+                    logger.exception("Consumer close failed queue=%s", queue)
+        await asyncio.sleep(5)
 
 
 async def publish_outbox_once():
@@ -144,23 +170,26 @@ async def publish_outbox_once():
         ).all()
         if not rows:
             return
-        connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
+        connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"], timeout=30)
         try:
-            channel = await connection.channel(publisher_confirms=True)
+            async with asyncio.timeout(30):
+                channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
             for row in rows:
-                await topology(channel, row.queue)
-                await channel.default_exchange.publish(
+                async with asyncio.timeout(30):
+                    await topology(channel, row.queue)
+                await _confirmed_publish(
+                    channel,
                     aio_pika.Message(
                         json.dumps(row.payload).encode(),
                         content_type="application/json",
                         delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                     ),
-                    routing_key=row.queue,
-                    mandatory=True,
+                    row.queue,
                 )
                 row.published_at = now()
         finally:
-            await connection.close()
+            async with asyncio.timeout(30):
+                await connection.close()
 
 
 def recover_expired():

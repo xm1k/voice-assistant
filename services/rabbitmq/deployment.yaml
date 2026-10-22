@@ -33,7 +33,7 @@ spec:
                   name: secrets
                   key: RABBITMQ_PASSWORD
             - name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
-              value: "+S 2:2 +A 4"
+              value: "+S 2:2 +A 4 -rabbit consumer_timeout 900000"
           volumeMounts:
             - name: data
               mountPath: /var/lib/rabbitmq
