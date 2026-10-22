@@ -146,6 +146,21 @@ async def complete(messages):
     request_id = uuid.uuid4().hex
     if config.get("response_format") == "json_object":
         response_format = {"type": "json_object"}
+        schema = strict_schema(TypeAdapter(Decision).json_schema())
+        example = {
+            "type": "clarify", "answer": None, "commands": [],
+            "question": "Во сколько поставить встречу?",
+            "context": "Создать встречу завтра; время ещё не указано.",
+            "query": None, "record_refs": [],
+        }
+        messages = [{
+            "role": "system",
+            "content": "Верните один JSON, соответствующий схеме Decision. "
+            "Пример показывает формат, а не ответ на текущий запрос.\nJSON Schema Decision:\n"
+            + json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+            + "\nПример JSON:\n"
+            + json.dumps(example, ensure_ascii=False, separators=(",", ":")),
+        }, *messages]
     else:
         response_format = {
             "type": "json_schema",
@@ -161,6 +176,8 @@ async def complete(messages):
         "max_tokens": config.get("max_tokens", 2500),
         "response_format": response_format,
     }
+    if "thinking" in config:
+        payload["thinking"] = {"type": config["thinking"]}
     # Log bodies, never request headers; redact the configured key even if echoed.
     logger.info("LLM request id=%s body=%s", request_id,
                 json.dumps(payload, ensure_ascii=False).replace(key, "<REDACTED>"))
