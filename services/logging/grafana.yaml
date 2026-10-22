@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-datasources
-  namespace: voice-assistant
+  namespace: monitoring
 data:
   datasources.yaml: |
     apiVersion: 1
@@ -20,7 +20,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: grafana-data
-  namespace: voice-assistant
+  namespace: monitoring
 spec:
   accessModes:
     - ReadWriteOnce
@@ -32,7 +32,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-  namespace: voice-assistant
+  namespace: monitoring
 spec:
   replicas: 1
   revisionHistoryLimit: 1
@@ -92,7 +92,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: grafana
-  namespace: voice-assistant
+  namespace: monitoring
 spec:
   type: NodePort
   selector:

@@ -12,7 +12,7 @@ spec:
     path: services/logging
   destination:
     server: https://kubernetes.default.svc
-    namespace: voice-assistant
+    namespace: monitoring
   syncPolicy:
     automated:
       prune: true
