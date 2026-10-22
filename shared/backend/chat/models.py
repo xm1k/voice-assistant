@@ -98,3 +98,9 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(500))
     due_at: Mapped[str] = mapped_column(String(64))
     read_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class Setting(Base):
+    __tablename__ = "system_settings"
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(String(2000))
