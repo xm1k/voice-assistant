@@ -27,7 +27,8 @@ response_format = {
 
 Не каждый провайдер одинаково поддерживает structured outputs. HTTP 200 не означает валидный JSON или сохранение данных. Pydantic повторно проверяет ответ; бизнес-проверки вроде сравнения дат выполняются в приложении. Провайдерская JSON Schema не кодирует все Python-валидаторы.
 
-Профиль DeepSeek использует `deepseek-flash` и JSON Output: `response_format: json_object`
+Профили DeepSeek Flash (`deepseek-flash`) и DeepSeek V4 Pro (`deepseek-v4-pro`)
+используют один `DEEPSEEK_API_KEY` и JSON Output: `response_format: json_object`
 в `providers.yaml` превращается в `response_format={"type":"json_object"}` в HTTP-запросе.
 Для этого режима клиент добавляет в начало messages системное сообщение с полной схемой
 Decision и примером JSON. Исходная история не изменяется. JSON Output обеспечивает формат
@@ -35,7 +36,7 @@ JSON, но соответствие Decision и бизнес-правилам п
 модели через существующий цикл исправления. Пустой ответ и обрыв по `finish_reason=length`
 также обрабатываются этим циклом.
 
-В профиле DeepSeek задано `thinking: disabled`: клиент передаёт
+В обоих профилях DeepSeek задано `thinking: disabled`: клиент передаёт
 `thinking={"type":"disabled"}` явно, без опоры на `/no_think` в тексте промпта.
 Остальные профили продолжают использовать `json_schema`.
 Спецификация: [JSON Output](https://api-docs.deepseek.com/guides/json_mode/) и

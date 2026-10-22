@@ -23,9 +23,12 @@ class CompletionRequestTests(unittest.TestCase):
         profiles = yaml.safe_load(
             (ROOT / "services/assistant-worker/app/config/providers.yaml").read_text()
         )["llm"]["profiles"]
-        for name in ("deepseek", "openrouter"):
+        for name in ("deepseek", "deepseek_v4_pro", "openrouter"):
             with self.subTest(provider=name):
                 config = profiles[name]
+                if name == "deepseek_v4_pro":
+                    self.assertEqual(config["model"], "deepseek-v4-pro")
+                    self.assertEqual(config["api_key_env"], "DEEPSEEK_API_KEY")
                 messages = [{"role": "system", "content": "Return JSON."},
                             {"role": "user", "content": "создай дейлик по будням"}]
                 original = [dict(message) for message in messages]
@@ -51,7 +54,8 @@ class CompletionRequestTests(unittest.TestCase):
 
                 self.assertEqual(messages, original)
                 payload = captured[0]
-                if name == "deepseek":
+                self.assertEqual(payload["model"], config["model"])
+                if name.startswith("deepseek"):
                     self.assertEqual(payload["response_format"], {"type": "json_object"})
                     self.assertEqual(payload.get("thinking"), {"type": "disabled"})
                     instruction = payload["messages"][0]["content"]

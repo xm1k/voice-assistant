@@ -18,6 +18,16 @@ llm:
       thinking: disabled
       timeout_seconds: 60
       max_tokens: 2500
+    deepseek_v4_pro:
+      label: "DeepSeek · V4 Pro"
+      provider: openai
+      base_url: https://api.deepseek.com
+      model: deepseek-v4-pro
+      api_key_env: DEEPSEEK_API_KEY
+      response_format: json_object
+      thinking: disabled
+      timeout_seconds: 60
+      max_tokens: 2500
     ollama:
       label: "Ollama · Qwen3 14B (local)"
       provider: openai
