@@ -42,7 +42,18 @@ data:
             prefix: index_
             period: 24h
 
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+        final_sleep: 0s
+      chunk_idle_period: 5m
+      chunk_retain_period: 30s
+
     limits_config:
+      ingestion_rate_strategy: local
       retention_period: 720h
 
     compactor:

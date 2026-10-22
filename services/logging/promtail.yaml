@@ -114,6 +114,9 @@ spec:
             - -config.file=/etc/promtail/promtail.yaml
           ports:
             - containerPort: 9080
+          securityContext:
+            runAsUser: 0
+            readOnlyRootFilesystem: false
           volumeMounts:
             - name: config
               mountPath: /etc/promtail
