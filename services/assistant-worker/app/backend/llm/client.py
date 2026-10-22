@@ -144,18 +144,22 @@ async def complete(messages):
     if not key:
         raise RuntimeError("LLM provider key is missing")
     request_id = uuid.uuid4().hex
-    payload = {
-        "model": config["model"],
-        "messages": messages,
-        "max_tokens": config.get("max_tokens", 2500),
-        "response_format": {
+    if config.get("response_format") == "json_object":
+        response_format = {"type": "json_object"}
+    else:
+        response_format = {
             "type": "json_schema",
             "json_schema": {
                 "name": "decision",
                 "strict": True,
                 "schema": strict_schema(TypeAdapter(Decision).json_schema()),
             },
-        },
+        }
+    payload = {
+        "model": config["model"],
+        "messages": messages,
+        "max_tokens": config.get("max_tokens", 2500),
+        "response_format": response_format,
     }
     # Log bodies, never request headers; redact the configured key even if echoed.
     logger.info("LLM request id=%s body=%s", request_id,
