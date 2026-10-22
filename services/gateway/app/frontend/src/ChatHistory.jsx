@@ -38,7 +38,13 @@ export default function ChatHistory({messages, busy, connected, mockMode, timezo
     {cursor ? <button type="button" className="secondary-button" disabled={loadingOlder} onClick={earlier}>{loadingOlder ? 'Загружаю…' : 'Загрузить предыдущие'}</button> : null}
     {error ? <p role="alert" className="form-error">{error}</p> : null}
     {!connected && !mockMode ? <p role="status">Соединение восстанавливается…</p> : null}
-    {!ready ? <p role="status">Загружаю историю…</p> : messages.length === 0 ? <div className="empty-chat"><span>●</span><h2>Чем помочь?</h2><p>Задачи, встречи и напоминания можно формулировать обычными словами.</p></div> : messages.map((message, index) => <ChatMessage key={message.id || `${message.role}-${index}`} message={message} timezone={timezone} api={api} onOpen={onOpen} />)}
-    {busy ? <article className="bubble assistant processing"><small>Ассистент</small><p>Думаю<span className="dots">•••</span></p></article> : null}
+    {!ready ? <p role="status">Загружаю историю…</p> : messages.length === 0 && !busy ? <div className="empty-chat"><span>●</span><h2>Чем помочь?</h2><p>Задачи, встречи и напоминания можно формулировать обычными словами.</p></div> : messages.map((message, index) => <ChatMessage key={message.id || `${message.role}-${index}`} message={message} timezone={timezone} api={api} onOpen={onOpen} />)}
+    {busy ? <article className={`bubble ${busy === 'transcription' ? 'user' : 'assistant'} processing`} role="status">
+      <small>{busy === 'transcription' ? 'Голосовое сообщение' : 'Ассистент'}</small>
+      <div className="processing-content">
+        <span className={busy === 'transcription' ? 'processing-wave' : 'processing-dots'} aria-hidden="true"><i /><i /><i /><i /><i /></span>
+        <span>{busy === 'transcription' ? 'Распознаю голос…' : 'Готовлю ответ…'}</span>
+      </div>
+    </article> : null}
   </div>;
 }

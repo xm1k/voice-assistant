@@ -13,6 +13,17 @@ test('chat cards render trusted snapshots, escape text, and keep legacy messages
     plugins: [react()], server: {middlewareMode: true, hmr: {server: httpServer}, watch: null}, appType: 'custom'});
   try {
     const {default: ChatMessage} = await server.ssrLoadModule('/src/ChatMessage.jsx');
+    const {default: ChatHistory} = await server.ssrLoadModule('/src/ChatHistory.jsx');
+    const history = busy => renderToStaticMarkup(React.createElement(ChatHistory, {
+      messages: [], busy, ready: true, connected: true,
+    }));
+    assert.match(history('transcription'), /bubble user processing/);
+    assert.match(history('transcription'), /Распознаю голос/);
+    assert.doesNotMatch(history('transcription'), /Готовлю ответ|Чем помочь/);
+    assert.match(history('assistant'), /bubble assistant processing/);
+    assert.match(history('assistant'), /Готовлю ответ/);
+    assert.doesNotMatch(history(false), /processing/);
+
     const render = message => renderToStaticMarkup(React.createElement(ChatMessage, {message, timezone: 'Europe/Moscow', api: async () => ({}), onOpen: () => {}}));
     assert.match(render({role: 'assistant', text: 'Старый ответ'}), /Старый ответ/);
     const record = {id: 'a', title: '<script>bad</script>', kind: 'meeting', status: 'active', start_at: '2027-12-15T11:00:00Z', end_at: '2027-12-15T12:00:00Z', version: 1};

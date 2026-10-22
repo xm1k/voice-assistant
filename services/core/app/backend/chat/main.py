@@ -81,7 +81,7 @@ def job_output(job):
     result = job.result
     if result and "cards" in result:
         result = {**result, "cards": visible_cards(result["cards"])}
-    return {"id": job.id, "status": job.status, "result": result, "error": job.error}
+    return {"id": job.id, "kind": job.kind, "status": job.status, "result": result, "error": job.error}
 
 
 def message_output(item):
