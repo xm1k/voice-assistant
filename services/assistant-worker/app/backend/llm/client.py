@@ -143,37 +143,48 @@ async def complete(messages):
     key = os.getenv(config["api_key_env"], "")
     if not key:
         raise RuntimeError("LLM provider key is missing")
+    request_id = uuid.uuid4().hex
+    payload = {
+        "model": config["model"],
+        "messages": messages,
+        "max_tokens": config.get("max_tokens", 2500),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "decision",
+                "strict": True,
+                "schema": strict_schema(TypeAdapter(Decision).json_schema()),
+            },
+        },
+    }
+    # Log bodies, never request headers; redact the configured key even if echoed.
+    logger.info("LLM request id=%s body=%s", request_id,
+                json.dumps(payload, ensure_ascii=False).replace(key, "<REDACTED>"))
     async with httpx.AsyncClient(timeout=config.get("timeout_seconds", 60)) as client:
-        response = await client.post(
-            config["base_url"].rstrip("/") + "/chat/completions",
-            headers={
-                "Authorization": f"Bearer {key}",
-                "x-session-id": f"title-ses_{uuid.uuid4().hex}",
-                "x-session-affinity": f"title-ses_{uuid.uuid4().hex}",
-                **config.get("headers", {}),
-            },
-            json={
-                "model": config["model"],
-                "messages": messages,
-                "max_tokens": config.get("max_tokens", 2500),
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "decision",
-                        "strict": True,
-                        "schema": strict_schema(TypeAdapter(Decision).json_schema()),
-                    },
+        try:
+            response = await client.post(
+                config["base_url"].rstrip("/") + "/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "x-session-id": f"title-ses_{uuid.uuid4().hex}",
+                    "x-session-affinity": f"title-ses_{uuid.uuid4().hex}",
+                    **config.get("headers", {}),
                 },
-            },
-        )
+                json=payload,
+            )
+        except httpx.RequestError as exc:
+            logger.warning("LLM request failed id=%s error=%s", request_id, type(exc).__name__)
+            raise
+        logger.info("LLM response id=%s status=%s body=%s", request_id,
+                    response.status_code, response.text.replace(key, "<REDACTED>"))
         response.raise_for_status()
         try:
             choice = response.json()["choices"][0]
             content = choice["message"].get("content")
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise InvalidModelResponse("Провайдер вернул некорректный формат ответа.") from exc
-        logging.getLogger(__name__).info("LLM finish_reason=%s content_len=%s",
-                                       choice.get("finish_reason"), len(content) if isinstance(content, str) else 0)
+        logger.info("LLM completion id=%s finish_reason=%s content_len=%s", request_id,
+                    choice.get("finish_reason"), len(content) if isinstance(content, str) else 0)
         if choice.get("finish_reason") == "length":
             raise InvalidModelResponse("Ответ оборван по лимиту токенов. Верните более короткий полный JSON.",
                                        previous=content if isinstance(content, str) else None)
