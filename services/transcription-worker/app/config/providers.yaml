@@ -1,0 +1,9 @@
+stt:
+  provider: local_whisper
+  model: small
+  device: cpu
+  compute_type: int8
+  language: ru
+  base_url: https://api.openai.com/v1
+  api_key_env: STT_API_KEY
+  timeout_seconds: 120
