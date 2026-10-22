@@ -1,0 +1,19 @@
+llm:
+  provider: openai
+  base_url: http://ollama:11434/v1
+  model: qwen2.5:14b
+  api_key_env: OPENROUTER_API_KEY
+  timeout_seconds: 120
+  max_tokens: 2500
+stt:
+  provider: local_whisper
+  model: small
+  device: cpu
+  compute_type: int8
+  language: ru
+  base_url: https://api.openai.com/v1
+  api_key_env: STT_API_KEY
+  timeout_seconds: 120
+search:
+  model: intfloat/multilingual-e5-small
+  enabled: true

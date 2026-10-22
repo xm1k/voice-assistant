@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcription-worker
+  namespace: voice-assistant
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: transcription-worker
+  template:
+    metadata:
+      labels:
+        app: transcription-worker
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: docker.io/busybox
+          command: ["sh", "-c", "until nc -z db 5432; do echo waiting for db; sleep 2; done"]
+      containers:
+        - name: transcription-worker
+          image: registry.registry.svc.cluster.local:5000/speech:latest
+          command: ["python", "-m", "backend.workers.transcription"]
+          envFrom:
+            - configMapRef:
+                name: config
+          env:
+            - name: DOMAIN_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DOMAIN_DB_PASSWORD
+            - name: DOMAIN_DATABASE_URL
+              value: "postgresql+psycopg://golos_domain:$(DOMAIN_DB_PASSWORD)@db/golos_domain"
+            - name: INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: INTERNAL_TOKEN
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://golos_v2:$(RABBITMQ_PASSWORD)@rabbitmq/"
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: OPENROUTER_API_KEY
+            - name: STT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: STT_API_KEY
+          volumeMounts:
+            - name: audio
+              mountPath: /audio
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: audio
+          persistentVolumeClaim:
+            claimName: audio-v2
+        - name: models
+          persistentVolumeClaim:
+            claimName: whisper-models-v2

@@ -5,8 +5,10 @@ metadata:
   name: ollama
   namespace: voice-assistant
 spec:
+  type: NodePort
   selector:
     app: ollama
   ports:
     - port: 11434
       targetPort: 11434
+      nodePort: 31007
