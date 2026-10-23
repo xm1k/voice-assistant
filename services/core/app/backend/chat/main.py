@@ -3,7 +3,7 @@ import hashlib
 import json
 from datetime import date, datetime, timedelta, timezone
 
-from backend.chat.decisions import MeetingConflict, apply_decision, conflict_feedback
+from backend.chat.decisions import MeetingConflict, apply_decision
 from backend.chat.domain import (
     change,
     event,
@@ -51,6 +51,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi import Query as Param
+from fastapi.responses import JSONResponse
 from pydantic import Field, ValidationError
 from sqlalchemy import select
 
@@ -661,6 +662,28 @@ class DecisionCheck(Strict):
     decision: dict
 
 
+def conflict_response(proposal):
+    message = (
+        "Ничего не сохранено. Верните clarify без commands: спросите дату окончания "
+        "или число повторений новой серии."
+        if proposal.get("requires_recurrence_bound") else
+        "Ничего не сохранено. Верните clarify без commands: назовите конфликтующие встречи "
+        "и спросите, оставить предложенное время несмотря на пересечение или выбрать другое."
+    )
+    # Return a response rather than raise: the outer transaction must commit the
+    # required-question marker after rolling back the speculative record changes.
+    return JSONResponse(status_code=422, content={"detail": {
+        "code": "meeting_conflict", "errors": [{
+            # Workers bound diagnostic text. Keep the required action and the
+            # relevant intervals ahead of potentially long command notes.
+            "loc": ["commands"], "code": "meeting_conflict", "message": message,
+            "requires_recurrence_bound": bool(proposal.get("requires_recurrence_bound")),
+            "conflict_count": len(proposal["conflicts"]), "conflicts": proposal["conflicts"],
+            "commands": proposal["commands"], "valid": False,
+        }],
+    }})
+
+
 @app.post("/internal/jobs/{job_id}/validate", dependencies=[Depends(internal)])
 def validate_job_decision(job_id: str, body: DecisionCheck):
     with Session.begin() as db:
@@ -681,7 +704,7 @@ def validate_job_decision(job_id: str, body: DecisionCheck):
             if decision.type == "query":
                 raise HTTPException(422, "Unresolved model query")
             if item.input.get("meeting_conflict") and decision.type != "clarify":
-                return conflict_feedback(item.input["meeting_conflict"])
+                return conflict_response(item.input["meeting_conflict"])
             # Every database effect, including flush, outbox and events, is rolled back.
             preview = db.begin_nested()
             try:
@@ -691,7 +714,7 @@ def validate_job_decision(job_id: str, body: DecisionCheck):
                 preview.rollback()
         except MeetingConflict as exc:
             item.input = {**item.input, "meeting_conflict": exc.proposal}
-            return exc.feedback()
+            return conflict_response(exc.proposal)
         except (ValidationError, HTTPException, ValueError) as exc:
             raise HTTPException(422, validation_detail(exc)) from exc
         return {"valid": True}

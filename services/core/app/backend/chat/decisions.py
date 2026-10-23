@@ -18,14 +18,6 @@ class MeetingConflict(Exception):
             self.proposal["requires_recurrence_bound"] = True
         super().__init__("Meeting conflict requires clarification")
 
-    def feedback(self):
-        return conflict_feedback(self.proposal)
-
-
-def conflict_feedback(proposal):
-    return {"valid": False, "code": "meeting_conflict", **proposal}
-
-
 def apply_decision(db, user_id, decision, timezone_name, *, consent=None):
     changes, cards, seen_refs, targets, created_ids = [], [], set(), {}, {}
     command_cards = []

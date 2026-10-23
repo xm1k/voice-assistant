@@ -1,9 +1,11 @@
 """Core owns conflict detection, rollback and consent; no model or network needed."""
 
 import asyncio
+import json
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from backend.chat import main as core
 from backend.chat.domain import change
@@ -11,11 +13,13 @@ from backend.chat.models import Chat, Event, Job, Outbox, Record
 from backend.common.runtime import Base, now
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from starlette.responses import JSONResponse
 
 
 @pytest.fixture
 def database():
-    engine = create_engine("sqlite://")
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine, tables=[
         table for table in Base.metadata.sorted_tables if table.name != "record_embeddings"
     ])
@@ -53,7 +57,8 @@ def job(name):
 
 
 def check(name, decision):
-    return core.validate_job_decision(name, core.DecisionCheck(claim_token=name, decision=decision))
+    response = core.validate_job_decision(name, core.DecisionCheck(claim_token=name, decision=decision))
+    return json.loads(response.body)["detail"]["errors"][0] if isinstance(response, JSONResponse) else response
 
 
 def finish(name, decision):
@@ -317,3 +322,79 @@ def test_endless_series_checks_moved_exceptions_far_in_the_future(database):
     decision = ready({"operation": "update", "id": target["id"], "version": target["version"],
                       "fields": {"status": "active"}})
     assert check("first", decision)["valid"] is False
+
+
+def test_http_conflict_rejects_decision_and_commits_required_question(database):
+    seed(database)
+    core.app.dependency_overrides[core.internal] = lambda: None
+    async def request():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=core.app), base_url="http://core") as client:
+            return await client.post("/internal/jobs/first/validate", json={
+                "claim_token": "first", "decision": ready(command()),
+            })
+
+    try:
+        response = asyncio.run(request())
+    finally:
+        core.app.dependency_overrides.pop(core.internal, None)
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["code"] == "meeting_conflict"
+    assert detail["errors"][0]["code"] == "meeting_conflict"
+    assert detail["errors"][0]["conflicts"][0]["existing"]["title"] == "Бюджет"
+    assert rows(database, Job)[0].input["meeting_conflict"]["conflicts"]
+    assert len(rows(database, Record)) == 1
+
+
+@pytest.mark.parametrize("operation", ["create", "move", "large_batch"])
+def test_conflict_flow_over_http_when_worker_discards_validation_body(database, operation):
+    from backend.llm.client import run_decision
+
+    seed(database)
+    initial = ready(command())
+    if operation == "large_batch":
+        initial = ready(command(fields={**command()["fields"], "notes": "x" * 5000}),
+                        command(fields={**command()["fields"], "title": "Вторая встреча", "notes": "y" * 5000}))
+    if operation == "move":
+        with database.begin() as db:
+            target = change(db, "user", "create", command(start="2027-01-12T14:00:00+03:00",
+                                                          end="2027-01-12T15:00:00+03:00")["fields"])
+        initial = ready({"operation": "update", "id": target["id"], "version": target["version"],
+                         "fields": {"start_at": command()["fields"]["start_at"],
+                                    "end_at": command()["fields"]["end_at"]}})
+    question = {"type": "clarify", "question": "Есть пересечение с бюджетом. Оставить время?",
+                "context": "Создать или перенести встречу с юристом"}
+    completions = AsyncMock(side_effect=[initial, question])
+    core.app.dependency_overrides[core.internal] = lambda: None
+
+    async def run(name, completion):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=core.app), base_url="http://core") as client:
+            async def validate(decision):
+                response = await client.post(f"/internal/jobs/{name}/validate", json={
+                    "claim_token": name, "decision": decision,
+                })
+                response.raise_for_status()
+                # Older workers ignore successful response bodies.
+
+            return await run_decision([], completion, AsyncMock(side_effect=AssertionError("Unexpected query")), validate)
+
+    try:
+        decision = asyncio.run(run("first", completions))
+        assert decision["type"] == "clarify" and not decision["commands"]
+        feedback = completions.call_args_list[1].args[0][-1]["content"]
+        assert "meeting_conflict" in feedback and "Бюджет" in feedback and "clarify" in feedback
+        assert len(rows(database, Record)) == (2 if operation == "move" else 1)
+        finish("first", decision)
+        with database.begin() as db:
+            pending = db.get(Chat, "user").pending["meeting_conflict"]
+            db.add(job("second"))
+        followup = {**initial, "conflict_confirmation": pending["token"]}
+        if operation == "move":
+            followup = ready({**initial["commands"][0], "fields": {
+                "start_at": "2027-01-12T12:00:00+03:00", "end_at": "2027-01-12T13:00:00+03:00",
+            }})
+        accepted = asyncio.run(run("second", AsyncMock(return_value=followup)))
+        assert finish("second", accepted)["status"] == "succeeded"
+        assert len(rows(database, Record)) == (3 if operation == "large_batch" else 2)
+    finally:
+        core.app.dependency_overrides.pop(core.internal, None)

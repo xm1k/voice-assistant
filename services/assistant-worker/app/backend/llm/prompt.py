@@ -1,7 +1,7 @@
 """Assistant instructions; the model resolves natural language into exact parameters."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -10,9 +10,17 @@ def system_prompt(context):
     requested_at = (
         datetime.fromisoformat(stamp.replace("Z", "+00:00")) if stamp else datetime.now(timezone.utc)
     )
+    local_now = requested_at.astimezone(ZoneInfo(context["timezone"]))
+    weekdays = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
     clock = {
         "utc_now": requested_at.astimezone(timezone.utc).isoformat(),
-        "local_now": requested_at.astimezone(ZoneInfo(context["timezone"])).isoformat(),
+        "local_now": local_now.isoformat(),
+        "local_date": local_now.date().isoformat(),
+        "local_weekday": weekdays[local_now.weekday()],
+        "nearest_weekdays": {
+            name: (local_now.date() + timedelta(days=(index - local_now.weekday()) % 7)).isoformat()
+            for index, name in enumerate(weekdays)
+        },
         "timezone": context["timezone"],
     }
     return (
@@ -85,10 +93,17 @@ meeting_conflict и передайте его token в conflict_confirmation. Н
 Для поиска прошлых задач и встреч это правило будущей даты не применяется: ищите
 исторические записи без произвольного ограничения годом и не просите год вместо поиска.
 Неделя — понедельник–воскресенье. «До конца недели» — воскресенье текущей недели.
-«В пятницу» — ближайшая пятница, включая сегодня. Если указанное время сегодня уже прошло,
+Для «в пятницу» и других дней недели используйте готовую дату из nearest_weekdays
+во времени сообщения. Ближайший день включает сегодня: если сегодня пятница, задача
+«в пятницу нужно отправить отчёт» получает due_date=local_date, даже вечером.
+Для задачи без времени прошедшие часы текущего дня не означают следующую неделю.
+Если указанное время сегодня уже прошло,
 уточните дату. «Через два часа» — момент через 120 минут после сообщения.
 «Послезавтра» — через два календарных дня, «на следующей неделе» — следующая неделя,
 начиная с понедельника. Если дату или время нельзя определить, задайте уточняющий вопрос.
+В recurrence.weekdays используйте нумерацию Python: 0=понедельник, 1=вторник, 2=среда,
+3=четверг, 4=пятница, 5=суббота, 6=воскресенье. «По будням» означает frequency=weekly,
+weekdays=[0,1,2,3,4]; «по выходным» — weekdays=[5,6]. Не используйте нумерацию от 1 до 7.
 
 Перед ответом о сохранённых данных выполняйте query. «Что у меня сегодня» и «какие планы
 на сегодня» означают все типы записей; «встречи сегодня» — только meeting. Для периодов
