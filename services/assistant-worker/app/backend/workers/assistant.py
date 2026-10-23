@@ -62,7 +62,7 @@ async def handle_job(payload):
             for item in context["messages"]
         )
         async def validate(decision):
-            await core(f"/internal/jobs/{job_id}/validate", {
+            return await core(f"/internal/jobs/{job_id}/validate", {
                 "claim_token": context["claim_token"], "decision": decision,
             })
 

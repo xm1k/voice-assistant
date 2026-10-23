@@ -1,9 +1,9 @@
 import asyncio
 import hashlib
 import json
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from backend.chat.decisions import apply_decision
+from backend.chat.decisions import MeetingConflict, apply_decision, conflict_feedback
 from backend.chat.domain import (
     change,
     event,
@@ -64,6 +64,15 @@ def lease_active(item):
         return False
     expiry = item.lease_until
     return (expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)) > now()
+
+
+def conflict_consent(current, item):
+    consent = (current.pending or {}).get("meeting_conflict")
+    if not consent:
+        return None
+    submitted = item.created_at.replace(tzinfo=item.created_at.tzinfo or timezone.utc)
+    # A message queued before the question cannot be an answer to that question.
+    return consent if submitted > datetime.fromisoformat(consent["asked_at"]) else None
 
 
 def chat(db, user_id):
@@ -611,6 +620,7 @@ def claim(job_id: str, body: Claim):
             "generation": current.generation,
             "messages": [message_output(x) for x in relevant[-30:]],
             "pending": current.pending,
+            "meeting_conflict": item.input.get("meeting_conflict"),
             "requested_at": item.created_at.replace(
                 tzinfo=item.created_at.tzinfo or timezone.utc
             ).isoformat(),
@@ -670,12 +680,18 @@ def validate_job_decision(job_id: str, body: DecisionCheck):
             decision = Decision.model_validate(body.decision)
             if decision.type == "query":
                 raise HTTPException(422, "Unresolved model query")
+            if item.input.get("meeting_conflict") and decision.type != "clarify":
+                return conflict_feedback(item.input["meeting_conflict"])
             # Every database effect, including flush, outbox and events, is rolled back.
             preview = db.begin_nested()
             try:
-                apply_decision(db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow"))
+                apply_decision(db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow"),
+                               consent=conflict_consent(current, item))
             finally:
                 preview.rollback()
+        except MeetingConflict as exc:
+            item.input = {**item.input, "meeting_conflict": exc.proposal}
+            return exc.feedback()
         except (ValidationError, HTTPException, ValueError) as exc:
             raise HTTPException(422, validation_detail(exc)) from exc
         return {"valid": True}
@@ -723,15 +739,22 @@ def result(job_id: str, body: Result):
                 decision = Decision.model_validate(body.decision)
                 if decision.type == "query":
                     raise HTTPException(422, "Unresolved model query")
+                if item.input.get("meeting_conflict") and decision.type != "clarify":
+                    raise HTTPException(422, "Conflict requires clarification")
                 with db.begin_nested():
                     changes, cards = apply_decision(
-                        db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow")
+                        db, item.user_id, decision, item.input.get("timezone", "Europe/Moscow"),
+                        consent=conflict_consent(current, item),
                     )
                     current.pending = (
                         {"question": decision.question, "context": decision.context}
                         if decision.type == "clarify"
                         else None
                     )
+                    if current.pending and item.input.get("meeting_conflict"):
+                        current.pending = {**current.pending, "meeting_conflict": {
+                            **item.input["meeting_conflict"], "token": uid(), "asked_at": now().isoformat(),
+                        }}
                     # Mutation confirmations derive from committed values, not model's claimed result.
                     answer = (
                         decision.question
@@ -751,6 +774,11 @@ def result(job_id: str, body: Result):
                             "message_id": message.id,
                         },
                     )
+            except MeetingConflict as exc:
+                # Schedule changed since preview. Rollback, then let the model ask.
+                item.input = {**item.input, "meeting_conflict": exc.proposal}
+                item.status, item.claim_token, item.lease_until = "queued", None, None
+                db.add(Outbox(queue="chat", payload={"job_id": item.id}))
             except (ValidationError, HTTPException, ValueError) as exc:
                 fail_with_message(db, current, item, public_validation_message(exc))
         event(db, item.user_id, "job", job_output(item))
