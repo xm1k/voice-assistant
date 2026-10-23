@@ -12,7 +12,11 @@ class Strict(BaseModel):
 class Recurrence(Strict):
     frequency: Literal["daily", "weekly", "monthly"]
     interval: int = Field(default=1, ge=1, le=365)
-    weekdays: list[int] = Field(default_factory=list, max_length=7)
+    weekdays: list[int] = Field(
+        default_factory=list, max_length=7,
+        description="Дни недели: 0=понедельник, 1=вторник, 2=среда, 3=четверг, "
+                    "4=пятница, 5=суббота, 6=воскресенье. По будням: [0,1,2,3,4]; по выходным: [5,6].",
+    )
     until: date | None = None
     count: int | None = Field(default=None, ge=1, le=10000)
 
