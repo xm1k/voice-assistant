@@ -3,6 +3,7 @@
 Личный помощник для задач, встреч и напоминаний: чат, голосовой ввод, календарь и уведомления. Стек: Python 3.12, FastAPI, PostgreSQL с pgvector, RabbitMQ, React/Vite, nginx и Kubernetes.
 
 - [Архитектура](ARCHITECTURE.md)
+- [README v2: данные, запросы пользователя и анимированные схемы](README.v2.md)
 - [Контракт модели, команды и ветки обработки](docs/llm-service.md)
 
 ## Структура репозитория
