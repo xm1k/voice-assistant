@@ -24,6 +24,18 @@ def canonical(value):
     return instant(value).astimezone(timezone.utc).isoformat()
 
 
+def recurrence_rule(data, origin):
+    recurrence = data["recurrence"]
+    options = {"dtstart": origin, "interval": recurrence.get("interval", 1)}
+    if recurrence.get("count"):
+        options["count"] = recurrence["count"]
+    if recurrence.get("until"):
+        options["until"] = datetime.combine(date.fromisoformat(recurrence["until"]), time.max, origin.tzinfo)
+    if recurrence.get("weekdays"):
+        options["byweekday"] = recurrence["weekdays"]
+    return rrule({"daily": DAILY, "weekly": WEEKLY, "monthly": MONTHLY}[recurrence["frequency"]], **options)
+
+
 def expand(data, start, end, exceptions, *, period_timezone=None):
     zone = ZoneInfo(data.get("timezone", "Europe/Moscow"))
     anchor_key = "start_at" if data.get("start_at") else "remind_at" if data.get("remind_at") else "due_date"
@@ -42,14 +54,7 @@ def expand(data, start, end, exceptions, *, period_timezone=None):
     if not recurrence:
         finish = instant(data["end_at"]).astimezone(zone) if data.get("end_at") else origin
         return [data] if origin < upper and (finish >= lower if finish == origin else finish > lower) else []
-    options = {"dtstart": origin, "interval": recurrence.get("interval", 1)}
-    if recurrence.get("count"):
-        options["count"] = recurrence["count"]
-    if recurrence.get("until"):
-        options["until"] = datetime.combine(date.fromisoformat(recurrence["until"]), time.max, zone)
-    if recurrence.get("weekdays"):
-        options["byweekday"] = recurrence["weekdays"]
-    rule = rrule({"daily": DAILY, "weekly": WEEKLY, "monthly": MONTHLY}[recurrence["frequency"]], **options)
+    rule = recurrence_rule(data, origin)
     duration = (instant(data["end_at"]) - instant(data["start_at"])) if data.get("end_at") else timedelta()
     results = []
     for occurrence in rule.between(lower - duration, upper, inc=True):
@@ -376,17 +381,104 @@ def conflicts(db, user_id, item):
     if item["kind"] != "meeting" or item["status"] != "active":
         return []
     start, end = instant(item["start_at"]), instant(item["end_at"])
+    zone = ZoneInfo(item["timezone"])
     candidates = records(
         db,
         user_id,
-        Query(kind="meeting", status="active", period_start=start.date(), period_end=end.date()),
+        Query(kind="meeting", status="active", period_start=start.astimezone(zone).date(),
+              period_end=end.astimezone(zone).date()),
         item["timezone"],
     )
     return [
-        {"id": x["id"], "title": x["title"], "occurrence_at": x.get("occurrence_at")}
+        {key: x.get(key) for key in ("id", "version", "title", "start_at", "end_at", "occurrence_at")}
         for x in candidates
         if (x["id"], x.get("occurrence_at")) != (item["id"], item.get("occurrence_at"))
         and not (x["id"] == item["id"] and instant(x["start_at"]) == start)
         and instant(x["start_at"]) < end
         and instant(x["end_at"]) > start
     ]
+
+
+class RecurrenceBoundRequired(Exception):
+    def __init__(self, proposed, existing):
+        self.proposed, self.existing = proposed, existing
+        super().__init__("Conflict check requires bounded recurrence")
+
+
+def meeting_conflict_pairs(db, user_id, item):
+    """Check each affected repetition, without guessing a horizon for an endless series."""
+    if item["kind"] != "meeting" or item["status"] != "active":
+        return []
+    if not item.get("recurrence") or item.get("occurrence_at"):
+        return [(item, existing) for existing in conflicts(db, user_id, item)]
+
+    def overrides(record_id):
+        return {row.occurrence_at: row.data for row in db.scalars(
+            select(ExceptionRecord).where(ExceptionRecord.record_id == record_id)
+        )}
+
+    def span(data, exceptions):
+        start, end = instant(data["start_at"]), instant(data["end_at"])
+        recurrence = data.get("recurrence")
+        if recurrence:
+            if not recurrence.get("count") and not recurrence.get("until"):
+                return None
+            rule = recurrence_rule(data, start.astimezone(ZoneInfo(data["timezone"])))
+            try:
+                end = rule[-1] + (end - start)
+            except IndexError:
+                return (start, start)
+        starts, ends = [start], [end]
+        for exception in exceptions.values():
+            if not exception.get("deleted"):
+                if exception.get("start_at"):
+                    starts.append(instant(exception["start_at"]))
+                if exception.get("end_at"):
+                    ends.append(instant(exception["end_at"]))
+        return min(starts), max(ends)
+
+    exceptions = overrides(item["id"])
+    window = span(item, exceptions)
+    windows = [window] if window else []
+    if window is None:
+        recurrence = item["recurrence"]
+        interval = recurrence.get("interval", 1)
+        # Conservative wall-clock lower bound: if even this cannot prove siblings
+        # disjoint, request a finite series instead of sampling a guessed horizon.
+        minimum_days = {"daily": interval, "weekly": 7 * interval, "monthly": 28 * interval}[
+            recurrence["frequency"]
+        ]
+        weekdays = sorted(recurrence.get("weekdays") or [])
+        if recurrence["frequency"] == "weekly" and len(weekdays) > 1:
+            minimum_days = min([b - a for a, b in zip(weekdays, weekdays[1:])]
+                               + [7 * interval + weekdays[0] - weekdays[-1]])
+        duration = instant(item["end_at"]) - instant(item["start_at"])
+        if duration > timedelta(days=minimum_days):
+            raise RecurrenceBoundRequired(item, item)
+        for stamp, exception in exceptions.items():
+            if not exception.get("deleted"):
+                start = instant(exception.get("start_at") or stamp)
+                end = (instant(exception["end_at"]) if exception.get("end_at") else
+                       instant(stamp).astimezone(ZoneInfo(item["timezone"])) + duration)
+                windows.append((start, end))
+        for row in db.scalars(select(Record).where(
+            Record.user_id == user_id, Record.deleted.is_(False), Record.id != item["id"]
+        )):
+            data = record_output(row)
+            if data["kind"] != "meeting" or data["status"] != "active":
+                continue
+            other_window = span(data, overrides(row.id))
+            if other_window is None:
+                raise RecurrenceBoundRequired(item, data)
+            windows.append(other_window)
+
+    pairs, seen = [], set()
+    zone = ZoneInfo(item["timezone"])
+    for lower, upper in windows:
+        for occurrence in expand(item, str(lower.astimezone(zone).date()),
+                                 str(upper.astimezone(zone).date()), exceptions):
+            if occurrence["occurrence_at"] in seen:
+                continue
+            seen.add(occurrence["occurrence_at"])
+            pairs.extend((occurrence, existing) for existing in conflicts(db, user_id, occurrence))
+    return pairs

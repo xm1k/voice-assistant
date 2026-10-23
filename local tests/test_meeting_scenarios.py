@@ -463,3 +463,31 @@ def test_50_series_edit_does_not_restore_deleted_occurrence(service):
             current, title="Статус проекта")
     changes = {occurrence_key(r): {"title": "Статус проекта"} for r in before}
     assert_occurrences(api, original, window, before, removed={occurrence_key(target)}, changes=changes)
+
+
+def test_51_conflicting_create_waits_for_consent(service):
+    api = service
+    day = future_day()
+    existing = meeting(api, "Планирование бюджета", day, hour=10)
+    result = api.say(f"Создай встречу с юристом {label(day)} с 10:30 до 11:30")
+    assert result["pending"] is True and not result.get("records"), result
+    assert_records(api, [existing])
+    result = api.say("Да, сохрани встречу с юристом на это время, несмотря на пересечение")
+    added = cards(result, "created")
+    assert result["pending"] is False and len(added) == 1, result
+    assert parsed(added[0]["start_at"]) == parsed(at(day, 10)) + timedelta(minutes=30), added
+    assert parsed(added[0]["end_at"]) == parsed(at(day, 11)) + timedelta(minutes=30), added
+    assert_records(api, [existing, api.get(added[0]["id"])])
+
+
+def test_52_conflicting_move_waits_for_new_time(service):
+    api = service
+    day = future_day()
+    existing = meeting(api, "Планирование бюджета", day, hour=10)
+    target = meeting(api, "Встреча с юристом", day, hour=14)
+    result = api.say(f"Перенеси встречу с юристом {label(day)} на 10:30–11:30")
+    assert result["pending"] is True and not result.get("records"), result
+    assert_records(api, [existing, target])
+    result = api.say("Тогда перенеси на 12:00–13:00 в тот же день")
+    moved = updated(api, result, target, start_at=at(day, 12), end_at=at(day, 13))
+    assert_records(api, [existing, moved])

@@ -132,6 +132,7 @@ class Decision(Strict):
     context: str | None = Field(default=None, max_length=8000)
     query: Query | None = None
     record_refs: list[RecordReference] = Field(default_factory=list, max_length=100)
+    conflict_confirmation: str | None = Field(default=None, max_length=36)
 
     @model_validator(mode="after")
     def branch(self):

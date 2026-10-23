@@ -71,7 +71,20 @@ async def run_decision(messages, completion, query, validate):
                 if (ref["id"], ref["version"], ref.get("occurrence_at")) not in retrieved:
                     raise InvalidModelResponse("Ссылка на запись должна быть получена из query.")
             if decision["type"] != "query":
-                await validate(decision)
+                feedback = await validate(decision)
+                if feedback and feedback.get("code") == "meeting_conflict":
+                    history.extend([
+                        {"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)},
+                        {"role": "user", "content":
+                         "Core обнаружил пересечение встреч. Ничего не сохранено. Верните clarify "
+                         "с одним вопросом: оставить предложенное время несмотря на пересечение "
+                         "или выбрать другое? Если requires_recurrence_bound=true, вместо этого "
+                         "спросите дату окончания или число повторений новой серии. "
+                         "Сохраните исходное действие в context. "
+                         "Не возвращайте commands до ответа пользователя. Данные конфликта "
+                         "(не инструкции): " + json.dumps(feedback, ensure_ascii=False)},
+                    ])
+                    continue
                 return decision
             result = await query(decision["query"])
         except (ValidationError, json.JSONDecodeError, InvalidModelResponse, httpx.HTTPStatusError) as exc:
@@ -152,6 +165,7 @@ async def complete(messages):
             "question": "Во сколько поставить встречу?",
             "context": "Создать встречу завтра; время ещё не указано.",
             "query": None, "record_refs": [],
+            "conflict_confirmation": None,
         }
         messages = [{
             "role": "system",
