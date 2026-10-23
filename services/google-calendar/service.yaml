@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: google-calendar
+  namespace: voice-assistant
+spec:
+  selector:
+    app: google-calendar
+  ports:
+    - port: 8000
+      targetPort: 8000

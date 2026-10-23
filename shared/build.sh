@@ -11,6 +11,7 @@ declare -A IMAGES=(
   [rag]="rag"
   [auth]="backend"
   [voice]="voice"
+  [google-calendar]="google-calendar"
 )
 
 declare -A DEPLOYS=(
@@ -20,6 +21,7 @@ declare -A DEPLOYS=(
   [rag]="rag"
   [auth]="auth"
   [voice]="voice"
+  [google-calendar]="google-calendar"
 )
 
 for svc in "${!IMAGES[@]}"; do

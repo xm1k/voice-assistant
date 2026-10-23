@@ -12,6 +12,7 @@ from backend.chat.domain import (
     records,
     resolve_record,
 )
+from backend.chat.google import router as google_router
 from backend.chat.models import (
     Chat,
     Event,
@@ -56,6 +57,7 @@ from pydantic import Field, ValidationError
 from sqlalchemy import select
 
 app = FastAPI(title="Golos Domain API", version="1.0.0")
+app.include_router(google_router)
 install_validation_handler(app)
 TERMINAL = ("succeeded", "failed", "cancelled")
 

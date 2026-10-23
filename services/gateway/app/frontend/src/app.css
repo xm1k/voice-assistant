@@ -284,3 +284,5 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .inline-control select { min-width: 0; }
   .account-row { align-items: flex-start; gap: 15px; }
 }
+
+.google-sync-status {display:block;font-size:11px;font-weight:400;line-height:1.5;white-space:normal}.google-sync-status button,.google-problems button,.google-notice button {margin-left:8px;font-size:12px}.google-problems,.google-notice {padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px}.google-problems li {margin:8px 0}.settings-section > button + button {margin-left:8px}

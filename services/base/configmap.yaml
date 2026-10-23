@@ -11,3 +11,5 @@ data:
   RABBITMQ_USER: "golos_v2"
   PROVIDERS_CONFIG: "/app/config/providers.yaml"
   AUDIO_DIR: "/audio"
+  GOOGLE_CALENDAR_URL: "http://google-calendar:8000"
+  GOOGLE_REDIRECT_URI: ""

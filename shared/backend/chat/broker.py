@@ -4,6 +4,7 @@ import asyncio
 import copy
 import json
 import logging
+import math
 import os
 from datetime import timedelta, timezone
 
@@ -18,7 +19,7 @@ from backend.common.runtime import Session, now
 from backend.common.schemas import Query
 
 logger = logging.getLogger(__name__)
-QUEUES = ("chat", "llm_response", "transcription", "index")
+QUEUES = ("chat", "llm_response", "transcription", "index", "google_calendar")
 
 
 async def topology(channel, name):
@@ -46,6 +47,13 @@ async def _publish_message(queue, destination, message):
             connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"], timeout=30)
             channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
             await topology(channel, queue)
+            if queue == "google_calendar" and destination.startswith(queue + ".retry."):
+                delay_ms = int(destination.rsplit(".", 1)[1])
+                await channel.declare_queue(
+                    destination, durable=True,
+                    arguments={"x-dead-letter-exchange": "", "x-dead-letter-routing-key": queue,
+                               "x-message-ttl": delay_ms, "x-expires": max(86400000, delay_ms * 2)},
+                )
             await _confirmed_publish(channel, message, destination)
     finally:
         if connection is not None:
@@ -66,6 +74,15 @@ async def publish(queue, payload):
 
 
 async def exhausted(payload, queue):
+    if queue == "google_calendar" and isinstance(payload, dict) and payload.get("operation_id"):
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                os.getenv("CORE_URL", "http://core:8000")
+                + "/internal/google-calendar/operations/" + payload["operation_id"] + "/exhausted",
+                headers={"X-Internal-Token": os.environ["INTERNAL_TOKEN"]},
+            )
+            response.raise_for_status()
+        return
     if (
         queue not in ("chat", "transcription", "llm_response")
         or not isinstance(payload, dict)
@@ -121,6 +138,9 @@ async def consume(queue, handler):
                         blocked = isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 409
                         next_attempt = attempt + (0 if blocked else 1)
                         destination = queue + (".dead" if next_attempt >= 5 else ".retry")
+                        if queue == "google_calendar" and next_attempt < 5 and not blocked:
+                            delay = max(5 * 2 ** attempt, getattr(exc, "retry_after", 0) or 0)
+                            destination = queue + ".retry." + str(math.ceil(delay * 1000))
                         logger.warning(
                             "Delivery failed queue=%s attempt=%s error=%s",
                             queue,

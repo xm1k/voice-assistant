@@ -9,9 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import aio_pika
 import httpx
-from pamqp.commands import Basic
-
 from backend.chat import broker
+from pamqp.commands import Basic
 
 
 class Delivery(aio_pika.Message):
@@ -76,7 +75,7 @@ class BrokerDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
         await asyncio.wait_for(wait(), 3)
 
-    def start(self, handler):
+    def start(self, handler, queue="chat"):
         owner = self
 
         class Iterator:
@@ -126,7 +125,7 @@ class BrokerDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.env = patch.dict("os.environ", {"RABBITMQ_URL": "amqp://unit-test"})
         self.env.start()
         self.patches.append(self.env)
-        self.task = asyncio.create_task(broker.consume("chat", handler))
+        self.task = asyncio.create_task(broker.consume(queue, handler))
 
     async def failing_handler(self, _):
         self.events.append("handler")
@@ -220,6 +219,17 @@ class BrokerDeliveryTests(unittest.IsolatedAsyncioTestCase):
         await self.until(lambda: ("route", "chat.retry", 0) in self.events)
         self.assertLess(self.events.index(("route", "chat.retry", 0)), self.events.index("ack"))
 
+    async def test_google_retry_after_uses_durable_delay_before_ack(self):
+        class QuotaError(Exception):
+            retry_after = 120
+
+        async def handler(_):
+            raise QuotaError()
+
+        self.start(handler, queue="google_calendar")
+        await self.until(lambda: "ack" in self.events)
+        self.assertLess(self.events.index(("route", "google_calendar.retry.120000", 1)), self.events.index("ack"))
+
     async def test_timeout_cancels_handler_and_routes_retry(self):
         real_timeout = asyncio.timeout
         self.replace(broker.asyncio, "timeout", lambda delay: real_timeout(0 if delay == 600 else delay))
@@ -238,6 +248,29 @@ class BrokerDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConfirmedPublicationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_google_retry_after_declares_durable_delay_before_publication(self):
+        events = []
+
+        async def declare(name, **kwargs):
+            events.append(("declare", name, kwargs))
+
+        async def published(*args, **kwargs):
+            events.append(("publish", kwargs["routing_key"]))
+            return Basic.Ack(delivery_tag=1)
+
+        channel = SimpleNamespace(declare_queue=AsyncMock(side_effect=declare),
+                                  default_exchange=SimpleNamespace(publish=AsyncMock(side_effect=published)))
+        connection = SimpleNamespace(channel=AsyncMock(return_value=channel), close=AsyncMock())
+        with patch.dict("os.environ", {"RABBITMQ_URL": "amqp://test"}), patch.object(
+            broker.aio_pika, "connect_robust", AsyncMock(return_value=connection)
+        ):
+            await broker._route_failed("google_calendar", "google_calendar.retry.120000", aio_pika.Message(b"{}"), 1)
+        delayed = next(e for e in events if e[:2] == ("declare", "google_calendar.retry.120000"))
+        assert delayed[2]["durable"] is True
+        assert delayed[2]["arguments"]["x-message-ttl"] == 120000
+        assert delayed[2]["arguments"]["x-dead-letter-routing-key"] == "google_calendar"
+        assert events.index(delayed) < events.index(("publish", "google_calendar.retry.120000"))
+
     async def test_retry_preserves_message_properties(self):
         message = Delivery([], asyncio.Event(), attempt=2)
         original = copy.copy(message)

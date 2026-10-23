@@ -360,6 +360,8 @@ def change(
             row.data = validated({**row.data, **fields})
         row.version += 1
     db.flush()
+    from backend.chat.google import enqueue
+    enqueue(db, row, operation, scope, canonical(occurrence_at) if occurrence_at else None)
     db.add(Outbox(queue="index", payload={"record_id": row.id, "version": row.version}))
     event(db, user_id, "records_changed", {"id": row.id, "version": row.version})
     result = record_output(row)

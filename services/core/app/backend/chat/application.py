@@ -64,6 +64,7 @@ def main():
                     "0.0.0.0",
                     "--port",
                     "8000",
+                    "--no-access-log",  # OAuth callback contains a short-lived authorization code.
                 ],
                 "publisher": [python, "-m", "backend.chat.broker", "publisher"],
                 "results": [python, "-m", "backend.chat.broker", "results"],

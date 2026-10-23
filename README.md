@@ -5,6 +5,7 @@
 - [Архитектура](ARCHITECTURE.md)
 - [README v2: данные, запросы пользователя и анимированные схемы](README.v2.md)
 - [Контракт модели, команды и ветки обработки](docs/llm-service.md)
+- [Подключение и эксплуатация Google Calendar](docs/google-calendar.md)
 
 ## Структура репозитория
 

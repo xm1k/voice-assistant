@@ -1,12 +1,12 @@
 """Versioned, additive migrations for the rebuilt domain database."""
 
-from sqlalchemy import inspect, text
-
 from backend.common.runtime import Base, engine
+from sqlalchemy import inspect, text
 
 
 def migrate_domain(connection):
     from backend.chat import models  # noqa: F401
+    from backend.google_calendar import models as google_models  # noqa: F401
     from backend.rag.main import Embedding
 
     if connection.dialect.name == "postgresql":
@@ -26,6 +26,7 @@ def migrate_domain(connection):
     columns = {c["name"] for c in inspect(connection).get_columns("messages")}
     if "cards" not in columns:
         connection.execute(text("ALTER TABLE messages ADD COLUMN cards JSON"))
+    # New integration tables are additive; preserve rollback compatibility with v2.
     if version != 2:
         connection.execute(text("INSERT INTO schema_version(version) VALUES (2)"))
 
