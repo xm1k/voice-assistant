@@ -104,3 +104,38 @@ class Setting(Base):
     __tablename__ = "system_settings"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(String(2000))
+
+
+class YandexAccount(Base):
+    """Core's connection fence; credentials belong to the Yandex service."""
+    __tablename__ = "yandex_accounts"
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(30))
+
+
+class YandexSync(Base):
+    __tablename__ = "yandex_sync"
+    record_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    title: Mapped[str] = mapped_column(String(500))
+    version: Mapped[int] = mapped_column(Integer)
+    synced_version: Mapped[int] = mapped_column(Integer, default=0)
+    operation_id: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+
+class YandexSyncOperation(Base):
+    __tablename__ = "yandex_sync_operations"
+    __table_args__ = (UniqueConstraint("record_id", "generation", "version"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    record_id: Mapped[str] = mapped_column(String(36), index=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    version: Mapped[int] = mapped_column(Integer)
+    predecessor_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    code: Mapped[str | None] = mapped_column(String(50), nullable=True)

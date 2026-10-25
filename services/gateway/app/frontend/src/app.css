@@ -284,3 +284,5 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .inline-control select { min-width: 0; }
   .account-row { align-items: flex-start; gap: 15px; }
 }
+
+.yandex-sync-status {display:block;font-size:11px;font-weight:400;line-height:1.5;white-space:normal}.yandex-sync-status button,.yandex-problems button,.yandex-notice button {margin-left:8px;font-size:12px}.yandex-problems,.yandex-notice {padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px}.yandex-problems li {margin:8px 0}.settings-section > button + button {margin-left:8px}.settings-section form label,.settings-section > div > label {display:block;margin:12px 0}.settings-section form input {display:block;width:100%;max-width:400px}

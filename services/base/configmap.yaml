@@ -11,3 +11,4 @@ data:
   RABBITMQ_USER: "golos_v2"
   PROVIDERS_CONFIG: "/app/config/providers.yaml"
   AUDIO_DIR: "/audio"
+  YANDEX_CALENDAR_URL: "http://yandex-calendar:8000"

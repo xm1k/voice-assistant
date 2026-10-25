@@ -11,6 +11,7 @@ declare -A IMAGES=(
   [rag]="rag"
   [auth]="backend"
   [voice]="voice"
+  [yandex-calendar]="yandex-calendar"
 )
 
 declare -A DEPLOYS=(
@@ -20,6 +21,7 @@ declare -A DEPLOYS=(
   [rag]="rag"
   [auth]="auth"
   [voice]="voice"
+  [yandex-calendar]="yandex-calendar"
 )
 
 for svc in "${!IMAGES[@]}"; do

@@ -1,13 +1,13 @@
 """Versioned, additive migrations for the rebuilt domain database."""
 
-from sqlalchemy import inspect, text
-
 from backend.common.runtime import Base, engine
+from sqlalchemy import inspect, text
 
 
 def migrate_domain(connection):
     from backend.chat import models  # noqa: F401
     from backend.rag.main import Embedding
+    from backend.yandex_calendar import models as yandex_models  # noqa: F401
 
     if connection.dialect.name == "postgresql":
         connection.execute(text("SELECT pg_advisory_xact_lock(2036102101)"))
@@ -26,6 +26,7 @@ def migrate_domain(connection):
     columns = {c["name"] for c in inspect(connection).get_columns("messages")}
     if "cards" not in columns:
         connection.execute(text("ALTER TABLE messages ADD COLUMN cards JSON"))
+    # Integration tables are additive; older releases can still read schema v2.
     if version != 2:
         connection.execute(text("INSERT INTO schema_version(version) VALUES (2)"))
 

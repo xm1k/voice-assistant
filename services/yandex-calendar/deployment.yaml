@@ -1,0 +1,62 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yandex-calendar
+  namespace: voice-assistant
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: yandex-calendar
+  template:
+    metadata:
+      labels:
+        app: yandex-calendar
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: docker.io/busybox
+          command: ["sh", "-c", "until nc -z db 5432; do echo waiting for db; sleep 2; done"]
+      containers:
+        - name: yandex-calendar
+          image: registry.registry.svc.cluster.local:5000/yandex-calendar:latest
+          command: ["uvicorn", "backend.yandex_calendar.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: config
+          env:
+            - name: DOMAIN_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DOMAIN_DB_PASSWORD
+            - name: DOMAIN_DATABASE_URL
+              value: "postgresql+psycopg://golos_domain:$(DOMAIN_DB_PASSWORD)@db/golos_domain"
+            - name: INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: INTERNAL_TOKEN
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://golos_v2:$(RABBITMQ_PASSWORD)@rabbitmq/"
+            - name: YANDEX_TOKEN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: YANDEX_TOKEN_KEY
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10

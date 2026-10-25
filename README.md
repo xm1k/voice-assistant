@@ -76,7 +76,7 @@ npm run dev:mock
 
 ## Сборка, обновление и эксплуатация
 
-Woodpecker запускает `infra/ci/run_cd.py` для изменённых каталогов и затем sync Argo CD. `shared/build.sh` пересобирает все шесть backend-образов. Скрипты сборки используют Podman, push в registry и rollout restart: это не команды только для локальной проверки. Pipeline требует `KUBECONFIG_DATA` и `ARGOCD_TOKEN`.
+Woodpecker запускает `infra/ci/run_cd.py` для изменённых каталогов и затем sync Argo CD. `shared/build.sh` пересобирает все backend-образы. Скрипты сборки используют Podman, push в registry и rollout restart: это не команды только для локальной проверки. Pipeline требует `KUBECONFIG_DATA` и `ARGOCD_TOKEN`.
 
 Build-runner выводит ошибки отдельных сборок, но не гарантирует ненулевой итоговый код; проверяйте его логи и rollout. Для нового endpoint валидации сначала обновите core, затем assistant-worker и gateway. Автоматическая сборка не гарантирует такой порядок. Тег `latest` изменяемый: для надёжного отката сохраняйте проверенный digest образа/ревизию.
 
@@ -91,3 +91,5 @@ kubectl -n voice-assistant rollout status deployment/core
 Успех определяется статусом задания и результатом core, а не HTTP 200 от модели. Frontend показывает ошибки форм рядом с действием, фоновые — в закрываемой области; текст сохраняется при отказе отправки.
 
 Не удаляйте PVC БД и брокера при обычном обновлении. Делайте отдельные backup `golos_auth` и `golos_domain`, проверяйте восстановление. Общие audio/search PVC используют ReadWriteOnce: размещение на нескольких узлах требует соответствующего хранилища или согласованного размещения pod. Одиночные PostgreSQL/RabbitMQ не дают высокой доступности. Мониторинг, backup и ротация сертификатов требуют отдельной эксплуатации.
+
+Настройка интеграции: [Яндекс Календарь](docs/yandex-calendar.md).
