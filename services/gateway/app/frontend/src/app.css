@@ -284,3 +284,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .inline-control select { min-width: 0; }
   .account-row { align-items: flex-start; gap: 15px; }
 }
+
+.chat-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.clear-chat-button { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.clear-chat-button:hover { color: var(--danger); border-color: var(--danger); }
