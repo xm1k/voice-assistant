@@ -1,0 +1,68 @@
+.workspace-main, .workspace, .workspace-assistant, .workspace-content { min-width:0; min-height:0; }
+.workspace, .workspace-assistant { height:100%; }
+.workspace-assistant { display:flex; flex-direction:column; }
+.workspace-content { flex:1; overflow:auto; }
+.workspace-chat { display:flex; flex-direction:column; }
+.workspace-assistant > .composer-wrap { flex-shrink:0; }
+@media(min-width:721px) {
+.shell.workspace-shell { grid-template-columns:minmax(0,1fr); grid-template-rows:64px minmax(0,1fr); }
+.workspace-header { display:flex; align-items:center; gap:22px; padding:0 28px; background:var(--panel); border-bottom:1px solid var(--line); }
+.workspace-brand { display:flex; align-items:center; gap:9px; padding:0; border:0; background:transparent; font-size:21px; letter-spacing:-.04em; }
+.workspace-brand > span { display:grid; place-items:center; width:30px; height:30px; border-radius:7px; color:white; background:var(--accent); font-weight:700; }
+.workspace-purpose { color:var(--muted); font-size:13px; }
+.workspace-connection { margin-left:auto; color:var(--muted); font-size:11px; }
+.workspace-settings { border:0; background:transparent; padding:10px 0; font-size:12px; }
+.main.workspace-main { overflow:hidden; }
+.workspace-main > .settings { height:100%; overflow:auto; }
+.workspace { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); }
+.workspace-calendar { min-width:0; min-height:0; }
+.workspace-calendar .calendar-page { height:100%; padding:26px 24px 24px; gap:20px; }
+.workspace-calendar .calendar-toolbar { flex-wrap:wrap; gap:12px; }
+.workspace-calendar .calendar-toolbar h1 { font-size:23px; font-weight:600; letter-spacing:-.035em; }
+.workspace-calendar .toolbar-actions { flex-wrap:wrap; gap:6px; }
+.workspace-calendar .week-scroll { border-radius:4px; }
+.workspace-calendar .week-calendar { --time-column:46px; min-width:0; grid-template-columns:var(--time-column) repeat(7,minmax(0,1fr)); }
+.workspace-calendar .week-slots { grid-template-columns:repeat(7,minmax(0,1fr)); }
+.workspace-calendar .week-event { padding:6px 5px; border-radius:3px; }
+.workspace-calendar .week-event b { white-space:normal; line-height:1.4; font-weight:500; }
+.workspace-calendar .month-calendar { min-width:0; grid-template-columns:repeat(7,minmax(0,1fr)); border-radius:4px; }
+.workspace-calendar .month-cell, .workspace-calendar .calendar-event { min-width:0; }
+.workspace-assistant { border-left:1px solid var(--line); background:var(--panel); }
+.workspace-tabs { display:flex; flex-shrink:0; padding:0 16px; border-bottom:1px solid var(--line); }
+.workspace-tabs button { flex:1; min-width:0; padding:20px 4px 17px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font-size:12px; }
+.workspace-tabs button.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:600; }
+.unread-dot { display:inline-block; width:6px; height:6px; margin-left:6px; border-radius:50%; background:var(--accent); }
+.workspace-chat .assistant-head { min-height:86px; padding:20px; border:0; }
+.workspace-chat .assistant-head h1 { font-size:19px; font-weight:600; }
+.workspace-chat .assistant-head small { font-size:11px; }
+.workspace-chat .suggestions { padding:0 20px 16px; gap:5px; flex-wrap:wrap; overflow:visible; }
+.workspace-chat .suggestions button { border-radius:5px; padding:7px; font-size:11px; }
+.workspace-chat .messages { padding:20px; gap:20px; }
+.workspace-chat .bubble { max-width:100%; border:0; border-radius:0; padding:0; background:transparent; font-size:13px; }
+.workspace-chat .bubble.user { padding:10px 12px; border-radius:6px; background:var(--accent-soft); max-width:92%; }
+.workspace-assistant .composer-wrap { padding:14px 16px 12px; }
+.workspace-assistant .composer { border-radius:7px; gap:5px; }
+.workspace-assistant .composer textarea { font-size:12px; }
+.workspace-assistant .composer .icon-button { flex-shrink:0; }
+.workspace-assistant .composer-hint { padding:0; font-size:9px; line-height:1.5; }
+.workspace-content .page { padding:24px 18px; }
+.workspace-content .page header { margin-bottom:20px; }
+.workspace-content .page h1 { font-size:21px; }
+.workspace-content .page-title-row { flex-wrap:wrap; gap:12px; }
+.workspace-content .page-title-row small { display:none; }
+.workspace-content .primary-action { padding:9px 11px; font-size:11px; }
+.workspace-content .tabs { flex-wrap:wrap; gap:5px; }
+.workspace-content .tabs button { padding:6px 8px; font-size:10px; border-radius:5px; }
+.workspace-content .task-list article { grid-template-columns:24px minmax(0,1fr); gap:8px; padding:12px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; }
+.workspace-content .task-actions { grid-column:2; }
+.workspace-content .task-content b, .workspace-content .simple-list b { font-size:13px; white-space:normal; }
+.workspace-content .task-groups { gap:20px; }
+.workspace-content .simple-list article { padding:12px 0; border:0; border-bottom:1px solid var(--line); border-radius:0; }
+.workspace-content .reminder-actions { width:100%; padding-left:20px; }
+}
+
+.workspace-notice { margin: 0; padding: 10px 18px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+
+.main.workspace-main { display: flex; flex-direction: column; }
+.workspace-main > .workspace, .workspace-main > .calendar-page, .workspace-main > .settings { flex: 1; min-height: 0; }
+.workspace-main > .error-list, .workspace-main > .yandex-problems { flex-shrink: 0; max-height: 30dvh; overflow: auto; }
