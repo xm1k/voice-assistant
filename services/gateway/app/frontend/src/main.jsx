@@ -1,23 +1,13 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {lazy, Suspense, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import ChatHistory from './ChatHistory';
 import ErrorBoundary from './ErrorBoundary';
 import {createSpeaker} from './speech.js';
-import Calendar, {RecordEditor, recordDraft, draftFromRecord} from './Calendar';
-import Tasks from './Tasks';
-import Reminders from './Reminders';
-import {addDays, dateLabel, isoDate} from './dates';
 import './app.css';
-import MockWorkspace from './MockWorkspace';
+import Workspace from './Workspace';
 import {randomUUID, collectPages, createHistoryPager, eventGate, jobErrorMessage, api, addError} from './network';
 
 const mock = import.meta.env.MODE === 'mock';
-const demoRecords = [
-  {id: 'meeting', kind: 'meeting', title: 'Синхронизация команды', start_at: new Date(Date.now() + 86400000).toISOString(), end_at: new Date(Date.now() + 90000000).toISOString(), status: 'active'},
-  {id: 'task', kind: 'task', title: 'Отправить отчёт', due_date: isoDate(new Date()), status: 'active'},
-  {id: 'reminder', kind: 'reminder', title: 'Позвонить Ивану', remind_at: new Date(Date.now() + 7200000).toISOString(), status: 'active'},
-];
-const demoNotices = [{id: 'notice', title: 'Позвонить Ивану', due_at: new Date().toISOString(), read: false}];
+const MockWorkspace = mock ? lazy(() => import('./MockWorkspace')) : null;
 const defaultSettings = {theme: 'system', voice: false, browserNotifications: false};
 const nav = [['assistant', 'chat', 'Ассистент'], ['calendar', 'calendar', 'Календарь'], ['tasks', 'tasks', 'Задачи'], ['reminders', 'bell', 'Напоминания'], ['settings', 'settings', 'Настройки']];
 
@@ -79,12 +69,6 @@ function Composer({onSend, onAudio, busy, mockMode}) {
   return <div className="composer-wrap"><form className="composer" onSubmit={submit}><IconButton label="Загрузить аудио" disabled={mockMode} onClick={() => fileRef.current?.click()}>＋</IconButton><input ref={fileRef} hidden type="file" accept="audio/*" onChange={event => event.target.files[0] && onAudio(event.target.files[0])} /><textarea value={text} rows="1" maxLength="8000" disabled={busy} onKeyDown={keyDown} onChange={event => setText(event.target.value)} placeholder="Напишите или скажите, что нужно сделать" /><button type="button" className={`voice-button ${recording ? 'recording' : ''}`} onClick={record} disabled={busy} aria-label={recording ? 'Остановить запись' : 'Начать запись'}>{recording ? '■' : <AppIcon name="microphone" />}</button><button className="send-button" aria-label="Отправить" disabled={busy || (!text.trim() && !recording)}>{recording ? '✓' : '↑'}</button></form><small className="composer-hint">{mockMode && recording ? 'Демо-запись · остановите, чтобы получить пример расшифровки' : mockMode ? 'Демо · микрофон имитирует запись · Enter — отправить' : 'Enter — отправить · Shift+Enter — новая строка'}</small></div>;
 }
 
-function Assistant({messages, pending, onSend, onAudio, busy, mockMode, records, timezone, onRecordsChanged, historyCursor, historyReady, loadingOlder, historyRevision, onEarlier, connected, onClear}) {
-  const [quickCreate, setQuickCreate] = useState(null);
-  const create = kind => setQuickCreate({draft: recordDraft(kind)});
-  return <div className="assistant-layout"><section className="chat-screen"><header className="assistant-head"><div><small>{pending ? 'Жду уточнение' : 'Личный помощник'}</small><h1>Ассистент</h1></div><div className="chat-header-actions"><span className={pending ? 'status pending' : 'status'}>{pending ? 'Ответьте на вопрос' : 'Готов'}</span><button type="button" className="clear-chat-button" onClick={onClear} title="Очистить историю и контекст">Очистить чат</button></div></header><div className="suggestions quick-create"><button onClick={() => create('meeting')}>＋ Встреча</button><button onClick={() => create('reminder')}>＋ Напоминание</button><button onClick={() => create('task')}>＋ Задача</button></div><ChatHistory messages={messages} busy={busy} connected={connected} mockMode={mockMode} timezone={timezone} api={api} onOpen={record => setQuickCreate({record, draft: draftFromRecord(record, timezone)})} cursor={historyCursor} ready={historyReady} loadingOlder={loadingOlder} revision={historyRevision} onEarlier={onEarlier} /><Composer onSend={onSend} onAudio={onAudio} busy={busy || !connected} mockMode={mockMode} /></section><aside className="agenda"><h2>Ближайшее</h2>{records.length ? records.slice(0, 7).map((record, index) => <article key={`${record.id}-${record.occurrence_at || index}`}><small>{record.kind === 'meeting' ? 'Встреча' : record.kind === 'reminder' ? 'Напоминание' : 'Задача'}</small><b>{record.title}</b><time>{dateLabel(record.start_at || record.remind_at || record.due_date, timezone)}</time></article>) : <p>Пока ничего нет.</p>}</aside>{quickCreate && <RecordEditor {...quickCreate} timezone={timezone} api={api} onSaved={onRecordsChanged} onClose={() => setQuickCreate(null)} />}</div>;
-}
-
 function Settings({settings, setSettings, user, onTimezone, onNotifications, onLogout}) {
   const zones = useMemo(() => ['Europe/Moscow', 'UTC', ...(Intl.supportedValuesOf?.('timeZone') || [])].filter((zone, index, all) => all.indexOf(zone) === index), []);
   const [timezone, setTimezone] = useState(user.timezone), [saved, setSaved] = useState(false), [error, setError] = useState('');
@@ -104,11 +88,11 @@ function Login({onLogin}) {
 }
 
 function App() {
-  const [user, setUser] = useState(mock ? {id: 'demo', username: 'Денис', timezone: 'Europe/Moscow'} : null);
-  const [view, setView] = useState('assistant'), [pending, setPending] = useState(false), [records, setRecords] = useState(mock ? demoRecords : []), [taskRecords, setTaskRecords] = useState(mock ? demoRecords.filter(item => item.kind === 'task') : []), [notices, setNotices] = useState(mock ? demoNotices : []), [busy, setBusy] = useState(false), [settings, setSettings] = useState(readSettings());
-  const [reminderRecords, setReminderRecords] = useState(mock ? demoRecords.filter(item => item.kind === 'reminder') : []);
-  const [errors, setErrors] = useState([]), [connected, setConnected] = useState(mock), [revision, setRevision] = useState(0);
-  const [history, setHistory] = useState({messages: mock ? [{id:'demo', role:'assistant', text:'Добрый день. Что запланируем?'}] : [], cursor:null, ready:mock, loadingOlder:false, revision:0});
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('assistant'), [pending, setPending] = useState(false), [taskRecords, setTaskRecords] = useState([]), [notices, setNotices] = useState([]), [busy, setBusy] = useState(false), [settings, setSettings] = useState(readSettings());
+  const [reminderRecords, setReminderRecords] = useState([]);
+  const [errors, setErrors] = useState([]), [connected, setConnected] = useState(false), [revision, setRevision] = useState(0);
+  const [history, setHistory] = useState({messages: [], cursor:null, ready:false, loadingOlder:false, revision:0});
   const {messages, cursor:historyCursor, ready:historyReady, loadingOlder, revision:historyRevision} = history;
   const historyPager = useRef(null);
   if (!historyPager.current) historyPager.current = createHistoryPager(api, setHistory, history);
@@ -121,13 +105,11 @@ function App() {
   const fail = exception => setError(exception);
   const dismissError = message => setErrors(current => current.filter(item => item !== message));
   const reloadOverview = async () => {
-    if (mock) return;
-    const start = isoDate(new Date()), end = isoDate(addDays(new Date(), 90));
-    const [plans, reminderData, tasks, reminders] = await Promise.all([collectPages(api, `/api/v1/records?period_start=${start}&period_end=${end}`), collectPages(api, '/api/v1/notifications'), collectPages(api, '/api/v1/tasks'), collectPages(api, '/api/v1/reminders')]);
+    const [reminderData, tasks, reminders] = await Promise.all([collectPages(api, '/api/v1/notifications'), collectPages(api, '/api/v1/tasks'), collectPages(api, '/api/v1/reminders')]);
     const fresh = reminderData.filter(item => !item.read && !knownNotices.current.has(item.id));
     if (noticesReady.current && settings.browserNotifications && 'Notification' in window && Notification.permission === 'granted') fresh.forEach(item => new Notification('Голос', {body: item.title}));
     reminderData.forEach(item => knownNotices.current.add(item.id)); noticesReady.current = true;
-    setRecords(plans); setReminderRecords(reminders); setTaskRecords(tasks); setNotices(reminderData); setRevision(value => value + 1);
+    setReminderRecords(reminders); setTaskRecords(tasks); setNotices(reminderData); setRevision(value => value + 1);
   };
   const loadHistory = (earlier = false, replace = false) => historyPager.current.load({older:earlier, replace});
   const updateBusy = () => setBusy(activeJobs.current.size ? ([...activeJobs.current.values()].includes('transcription') ? 'transcription' : 'assistant') : false);
@@ -158,10 +140,10 @@ function App() {
     updateBusy();
   };
   useEffect(() => {document.documentElement.dataset.theme = settings.theme; const secure = location.protocol === 'https:' ? '; Secure' : ''; document.cookie = `golos_ui=${encodeURIComponent(JSON.stringify(settings))}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;}, [settings]);
-  useEffect(() => {if (!mock) api('/api/v1/auth/me').then(setUser).catch(exception => {if (exception.status !== 401) setError(exception.message);});}, []);
+  useEffect(() => {api('/api/v1/auth/me').then(setUser).catch(exception => {if (exception.status !== 401) setError(exception.message);});}, []);
   latest.current = {reconcile, handleJob, reloadOverview};
   useEffect(() => {
-    if (!user || mock) return;
+    if (!user) return;
     let disposed = false, socket, retry, delay = 1000;
     const open = () => {
       socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/v1/events`);
@@ -182,7 +164,7 @@ function App() {
     return () => {disposed=true; clearTimeout(retry); socket?.close();};
   }, [user?.id]);
   const send = async text => {
-    if (mock || !connected || busy) return;
+    if (!connected || busy) return;
     setBusy('assistant'); setError('');
     let accepted = false;
     if (pendingSend.current?.text !== text) pendingSend.current = {text, request_id:randomUUID()};
@@ -191,20 +173,26 @@ function App() {
   };
   const upload = async (file, audioError) => {
     if (audioError) return setError(audioError);
-    if (!file || mock || busy || !connected) return;
+    if (!file || busy || !connected) return;
     setBusy('transcription'); setError('');
     try {const body=new FormData(); body.append('file',file,file.name || 'recording.webm'); const job=await api('/api/v1/audio',{method:'POST',headers:{'Idempotency-Key':randomUUID()},body}); activeJobs.current.set(job.job_id, 'transcription'); await handleJob(await api(`/api/v1/jobs/${job.job_id}`));}
     catch (exception) {fail(exception); setBusy(false);}
   };
   const login = async (mode, data) => setUser(await api(`/api/v1/auth/${mode}`, {method: 'POST', body: JSON.stringify(data)}));
-  const logout = async () => {if (!mock) await api('/api/v1/auth/logout', {method: 'POST'}); location.reload();};
-  const readNotice = async id => {if (!mock) await api(`/api/v1/notifications/${id}/read`, {method: 'POST'}); setNotices(current => current.map(item => item.id === id ? {...item, read: true} : item));};
+  const logout = async () => {await api('/api/v1/auth/logout', {method: 'POST'}); location.reload();};
+  const readNotice = async id => {await api(`/api/v1/notifications/${id}/read`, {method: 'POST'}); setNotices(current => current.map(item => item.id === id ? {...item, read: true} : item));};
   const setBrowserNotifications = async enabled => {if (!enabled) return setSettings({...settings, browserNotifications: false}); if (!('Notification' in window)) return; const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission; setSettings({...settings, browserNotifications: permission === 'granted'}); if (permission !== 'granted') setError('Разрешите уведомления для этого сайта в настройках браузера.');};
-  const updateTimezone = async timezone => {if (mock) return setUser({...user, timezone}); setUser(await api('/api/v1/auth/me', {method: 'PATCH', body: JSON.stringify({timezone})})); await reloadOverview();};
-  const clearHistory = async () => {if (!window.confirm('Очистить историю разговора и текущий контекст? Задачи и встречи останутся.')) return; if (!mock) await api('/api/v1/chat/messages', {method: 'DELETE'}); historyPager.current.reset(); speaker.cancel(); setPending(false); setBusy(false); activeJobs.current.clear(); pendingSend.current = null;};
+  const updateTimezone = async timezone => {setUser(await api('/api/v1/auth/me', {method: 'PATCH', body: JSON.stringify({timezone})})); await reloadOverview();};
+  const clearHistory = async () => {if (!window.confirm('Очистить историю разговора и текущий контекст? Задачи и встречи останутся.')) return; await api('/api/v1/chat/messages', {method: 'DELETE'}); historyPager.current.reset(); speaker.cancel(); setPending(false); setBusy(false); activeJobs.current.clear(); pendingSend.current = null;};
   if (!user) return <><ErrorList errors={errors} onDismiss={dismissError} /><Login onLogin={login} /></>;
   const unread = notices.filter(item => !item.read).length;
-  return <div className="shell"><Navigation view={view} setView={setView} noticeCount={unread} user={user} /><main className="main"><ErrorList errors={errors} onDismiss={dismissError} />{view === 'assistant' && <Assistant onClear={() => clearHistory().catch(fail)} connected={connected} historyCursor={historyCursor} onEarlier={() => loadHistory(true)} historyReady={historyReady} loadingOlder={loadingOlder} historyRevision={historyRevision} messages={messages} pending={pending} onSend={send} onAudio={upload} busy={busy} mockMode={mock} records={records} timezone={user.timezone} onRecordsChanged={reloadOverview} />}{view === 'calendar' && <Calendar revision={revision} timezone={user.timezone} api={api} mockRecords={mock ? demoRecords : null} onChanged={reloadOverview} />}{view === 'tasks' && <Tasks records={taskRecords} timezone={user.timezone} api={api} onChanged={reloadOverview} mockMode={mock} />}{view === 'reminders' && <Reminders api={api} items={notices} records={reminderRecords} timezone={user.timezone} onRead={id => readNotice(id).catch(fail)} onChanged={reloadOverview} mockMode={mock} />}{view === 'settings' && <Settings settings={settings} setSettings={setSettings} user={user} onTimezone={updateTimezone} onNotifications={enabled => setBrowserNotifications(enabled).catch(fail)} onLogout={() => logout().catch(fail)} />}</main></div>;
+  return <Workspace Navigation={Navigation} Composer={Composer} user={user} view={view} setView={setView}
+    alerts={<ErrorList errors={errors} onDismiss={dismissError} />}
+    settingsContent={<Settings settings={settings} setSettings={setSettings} user={user} onTimezone={updateTimezone} onNotifications={enabled => setBrowserNotifications(enabled).catch(fail)} onLogout={() => logout().catch(fail)} />}
+    api={api} onRecordsChanged={reloadOverview} revision={revision}
+    taskRecords={taskRecords} reminderRecords={reminderRecords} notices={notices} noticeCount={unread} onRead={id => readNotice(id).catch(fail)}
+    messages={messages} pending={pending} connected={connected} busy={busy} onSend={send} onAudio={upload} onClear={() => clearHistory().catch(fail)}
+    historyCursor={historyCursor} historyReady={historyReady} loadingOlder={loadingOlder} historyRevision={historyRevision} onEarlier={() => loadHistory(true)} />;
 }
 
-createRoot(document.querySelector('#root')).render(<ErrorBoundary>{mock ? <MockWorkspace Navigation={Navigation} Composer={Composer} Settings={Settings} initialSettings={readSettings()} /> : <App />}</ErrorBoundary>);
+createRoot(document.querySelector('#root')).render(<ErrorBoundary><Suspense fallback={<p role="status">Загружаю…</p>}>{mock ? <MockWorkspace Navigation={Navigation} Composer={Composer} Settings={Settings} initialSettings={readSettings()} /> : <App />}</Suspense></ErrorBoundary>);
