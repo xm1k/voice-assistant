@@ -136,4 +136,4 @@
 - [Контракт LLM: поля, команды, запросы и обработка ошибок](docs/llm-service.md).
 - [Доставка RabbitMQ: повторы и восстановление](docs/rabbitmq-delivery.md).
 
-Ключевые источники реализации: [схемы данных](shared/backend/common/schemas.py), [бизнес-правила](shared/backend/chat/domain.py), [применение решений](services/core/app/backend/chat/decisions.py), [поиск](shared/backend/rag/main.py), [assistant-worker](services/assistant-worker/app/backend/workers/assistant.py).
+Ключевые источники реализации: [схемы данных](services/core/app/backend/common/schemas.py), [бизнес-правила](services/core/app/backend/chat/domain.py), [применение решений](services/core/app/backend/chat/decisions.py), [поиск](services/rag/app/backend/rag/main.py), [assistant-worker](services/assistant-worker/app/backend/workers/assistant.py).

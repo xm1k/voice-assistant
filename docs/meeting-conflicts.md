@@ -45,7 +45,8 @@ Core сверяет token, весь набор команд и актуальн�
 Локальные проверки без сети:
 
 ```sh
-python -m pytest shared/tests_v2 -q
+(cd services/core/app && uv run pytest -q)
+(cd tests/integration && uv run pytest -q)
 ```
 
 Сквозные сценарии 51–52 требуют развёрнутого API и настоящего LLM:

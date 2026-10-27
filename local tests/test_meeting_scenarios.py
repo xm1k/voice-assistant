@@ -154,7 +154,7 @@ def test_25_delete_missing_meeting_changes_nothing(service):
     api = service
     guard = control(api)
     result = api.say(f"Удали встречу с космонавтом {label(future_day())} в 10:00")
-    assert result["pending"] is False and not result.get("cards") and not result.get("records"), result
+    assert result["pending"] is False and not result.get("cards"), result
     assert_records(api, [guard])
 
 
@@ -164,8 +164,7 @@ def test_26_ambiguous_delete_waits_for_time(service):
     first = meeting(api, "Встреча с Иваном", day, hour=10)
     second = meeting(api, "Встреча с Иваном", day, hour=14)
     result = api.say(f"Удали встречу с Иваном {label(day)}")
-    assert result["pending"] is True and not result.get("records"), result
-    assert all(c["action"] == "found" for c in result.get("cards", [])), result
+    assert result["pending"] is True and not result.get("cards"), result
     assert_records(api, [first, second])
     deleted(api, api.say("Ту, которая в 14:00"), second, [first])
 
@@ -470,7 +469,7 @@ def test_51_conflicting_create_waits_for_consent(service):
     day = future_day()
     existing = meeting(api, "Планирование бюджета", day, hour=10)
     result = api.say(f"Создай встречу с юристом {label(day)} с 10:30 до 11:30")
-    assert result["pending"] is True and not result.get("records"), result
+    assert result["pending"] is True and not result.get("cards"), result
     assert_records(api, [existing])
     result = api.say("Да, сохрани встречу с юристом на это время, несмотря на пересечение")
     added = cards(result, "created")
@@ -486,7 +485,7 @@ def test_52_conflicting_move_waits_for_new_time(service):
     existing = meeting(api, "Планирование бюджета", day, hour=10)
     target = meeting(api, "Встреча с юристом", day, hour=14)
     result = api.say(f"Перенеси встречу с юристом {label(day)} на 10:30–11:30")
-    assert result["pending"] is True and not result.get("records"), result
+    assert result["pending"] is True and not result.get("cards"), result
     assert_records(api, [existing, target])
     result = api.say("Тогда перенеси на 12:00–13:00 в тот же день")
     moved = updated(api, result, target, start_at=at(day, 12), end_at=at(day, 13))

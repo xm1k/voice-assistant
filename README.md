@@ -2,14 +2,16 @@
 
 Личный помощник для задач, встреч и напоминаний: чат, голосовой ввод, календарь и уведомления. Стек: Python 3.12, FastAPI, PostgreSQL с pgvector, RabbitMQ, React/Vite, nginx и Kubernetes.
 
+- [Архитектура работы с LLM](docs/llm/README.md)
 - [Архитектура](ARCHITECTURE.md)
 - [README v2: данные, запросы пользователя и анимированные схемы](README.v2.md)
 - [Контракт модели, команды и ветки обработки](docs/llm-service.md)
+- [Подключение Яндекс Календаря](docs/yandex-calendar.md)
 
 ## Структура репозитория
 
-- `shared/backend/` — общие схемы, domain, модели БД, брокер, RAG и голосовой ввод; `shared/pyproject.toml` и lockfile — зависимости.
-- `services/<имя>/app/` — код конкретного сервиса и Dockerfile. Backend-образы собираются из корня репозитория: сначала общий backend, затем код сервиса поверх него.
+- `services/<имя>/app/` — самостоятельный сервис: `backend/`, `tests/`, `pyproject.toml`, `uv.lock` и Dockerfile. Образ собирается из этого каталога, общего кода между сервисами нет. Небольшие общие части — `backend/common/`, доставка RabbitMQ `backend/broker.py` в воркерах, описания таблиц в `auth/app/backend/migrations/schema/` — это копии: меняя контракт, обновляйте их во всех сервисах.
+- `tests/integration/` — межсервисные контрактные тесты: исходники core, assistant-worker и yandex-calendar загружаются в один процесс.
 - `services/<имя>/` — Deployments, Services и другие ресурсы; `services/base/` — общие ConfigMap, Secret и PVC.
 - `services/gateway/app/frontend/` — React-приложение. Оно включается в образ gateway; отдельный `webui` не является frontend Голос v2.
 - `apps/` — Argo CD Applications; `infra/` — registry, Woodpecker, RBAC и вспомогательная инфраструктура.
@@ -43,7 +45,7 @@ Gateway Service имеет NodePort `31010`/`31016`, внутренние пор
 
 ## Модели и конфигурация
 
-ConfigMap `config` задаёт `AUTH_URL`, `CORE_URL`, `RAG_URL`, `AUDIO_DIR` и `PROVIDERS_CONFIG`. Пароли и ключи приходят из Secret `secrets`.
+ConfigMap `config` задаёт `AUTH_URL`, `CORE_URL`, `RAG_URL`, `YANDEX_CALENDAR_URL`, `AUDIO_DIR` и `PROVIDERS_CONFIG`. Пароли и ключи приходят из Secret `secrets`.
 
 Активные LLM-профили описаны в `services/assistant-worker/app/config/providers.yaml`: адрес, модель, имя env-переменной ключа, timeout, лимит токенов и дополнительные заголовки. Этот файл встроен в образ worker. ConfigMap `providers` сейчас не смонтирован: изменение только его содержимого не меняет настройки worker.
 
@@ -53,16 +55,33 @@ Worker регистрирует названия профилей в core. Вы�
 
 Whisper и E5 загружают модели при использовании. Учитывайте память, диск, доступ к загрузке и время первого запроса. Ключи находятся в env, а не в YAML.
 
+## Яндекс Календарь
+
+Отдельный сервис `yandex-calendar` отправляет встречи в выбранный календарь пользователя через CalDAV. В настройках укажите логин Яндекса и пароль приложения типа «Календарь», затем выберите календарь. Локальные встречи служат источником правды: переносы и удаления применяются к связанным событиям, а кнопка «Синхронизировать встречи» отправляет все текущие встречи и восстанавливает внешние изменения или удаления. Посторонние события не меняются.
+
+Core доставляет операции через transactional outbox и очередь RabbitMQ `yandex_calendar`. Статусы возвращаются через внутренний HTTP API, WebSocket и REST. Все исходящие запросы сервиса ограничены 5 RPS на процесс. Пароли хранятся зашифрованными; добавьте ключ Fernet `YANDEX_TOKEN_KEY` в Secret `secrets`. Без ключа приложение работает локально, подключение недоступно.
+
+Порядок развёртывания: миграция и совместимый core → `yandex-calendar` → frontend в gateway. Сервис включён в сборку CI и Argo CD через `apps/yandex-calendar.yaml`. Команды настройки, ограничения и проверки приведены в [инструкции](docs/yandex-calendar.md).
+
 ## Локальная разработка
 
-Backend использует зависимости `shared/pyproject.toml`:
+У каждого backend-сервиса свои зависимости и тесты:
 
 ```sh
-cd shared
-uv sync --extra dev
+cd services/<имя>/app
+uv sync --extra dev        # core и rag: ещё --extra search, transcription-worker: --extra speech
+uv run pytest -q
 ```
 
-Для запуска конкретного сервиса собирайте runtime так же, как Dockerfile: `shared/backend/` плюс overlay `services/<имя>/app/backend/`. Одного добавления этих каталогов в PYTHONPATH недостаточно для всех подпакетов. Потребуются отдельные PostgreSQL, RabbitMQ и переменные адресов зависимостей. Compose-файлов в этом репозитории нет.
+Межсервисные тесты запускаются отдельно:
+
+```sh
+cd tests/integration
+uv sync --extra dev
+uv run pytest -q
+```
+
+Сервис запускается из своего каталога так же, как в Dockerfile, например `uv run python -m backend.chat.application` для core. Потребуются отдельные PostgreSQL, RabbitMQ и переменные адресов зависимостей. Compose-файлов в этом репозитории нет.
 
 Frontend без backend:
 
@@ -76,7 +95,7 @@ npm run dev:mock
 
 ## Сборка, обновление и эксплуатация
 
-Woodpecker запускает `infra/ci/run_cd.py` для изменённых каталогов и затем sync Argo CD. `shared/build.sh` пересобирает все шесть backend-образов. Скрипты сборки используют Podman, push в registry и rollout restart: это не команды только для локальной проверки. Pipeline требует `KUBECONFIG_DATA` и `ARGOCD_TOKEN`.
+Woodpecker запускает `infra/ci/run_cd.py` для изменённых каталогов и затем sync Argo CD. `services/<имя>/app/build.sh` собирает образ из каталога сервиса, поэтому изменение одного сервиса пересобирает только его. Скрипты сборки используют Podman, push в registry и rollout restart: это не команды только для локальной проверки. Pipeline требует `KUBECONFIG_DATA` и `ARGOCD_TOKEN`.
 
 Build-runner выводит ошибки отдельных сборок, но не гарантирует ненулевой итоговый код; проверяйте его логи и rollout. Для нового endpoint валидации сначала обновите core, затем assistant-worker и gateway. Автоматическая сборка не гарантирует такой порядок. Тег `latest` изменяемый: для надёжного отката сохраняйте проверенный digest образа/ревизию.
 

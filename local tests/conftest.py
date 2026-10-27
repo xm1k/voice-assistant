@@ -1,7 +1,6 @@
 import json
 import time
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -21,8 +20,8 @@ def pytest_addoption(parser):
     parser.addoption("--base-url", help="HTTP(S) URL or IP:port of the public gateway")
     parser.addoption("--job-timeout", type=float, default=180, help="Seconds per LLM message")
     parser.addoption("--insecure", action="store_true", help="Disable TLS verification for a trusted test server")
-    parser.addoption("--report-path", default=str(Path(__file__).with_name("reports") / "latest.html"),
-                     help="Output HTML report path (overwritten each run)")
+    parser.addoption("--report-path", default=None,
+                     help="Explicit HTML path (overwritten); default: reports/report_DATE_TIME_COMMIT.html, Moscow time")
 
 
 def pytest_configure(config):

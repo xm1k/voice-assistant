@@ -1,0 +1,31 @@
+[project]
+name = "golos-yandex-calendar"
+version = "0.1.0"
+description = "Yandex Calendar CalDAV synchronization"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "httpx>=0.28,<1",
+  "sqlalchemy>=2.0,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.10,<3",
+  "python-dateutil>=2.9,<3",
+  "aio-pika>=9.5,<10",
+  "caldav>=2,<4",
+  "icalendar>=6,<8",
+  "cryptography>=44,<47",
+]
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.11,<1"]
+[tool.uv]
+package = false
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["postgres: requires TEST_POSTGRES_URL", "live: requires external models or API credentials"]
+[tool.ruff]
+line-length = 110
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

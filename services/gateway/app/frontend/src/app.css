@@ -29,8 +29,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .mobile-nav { display: none; }
 .main { min-width: 0; min-height: 0; overflow: auto; }
 
-.assistant-layout { height: 100%; display: grid; grid-template-columns: minmax(480px, 1fr) 280px; overflow: hidden; }
-.chat-screen { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .assistant-head { min-height: 82px; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); background: var(--panel); }
 .assistant-head small, .page header small { color: var(--muted); }
 .assistant-head h1, .page h1 { margin: 3px 0 0; font-size: 26px; letter-spacing: -.035em; }
@@ -88,11 +86,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .voice-button .app-icon { width: 21px; height: 21px; }
 .voice-button.recording { background: var(--danger); animation: recording 1.2s infinite; }
 .send-button { width: 36px; height: 36px; border-radius: 9px; font-size: 18px; }
-.agenda { min-height: 0; padding: 26px 20px; overflow: auto; border-left: 1px solid var(--line); background: var(--panel); }
-.agenda h2 { margin: 0 0 17px; font-size: 15px; }
-.agenda article { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
-.agenda article small, .agenda time, .agenda > p { color: var(--muted); font-size: 11px; }
-.agenda article b { font-size: 13px; }
 
 .page { width: min(820px, 100%); margin: 0 auto; padding: 46px clamp(20px, 6vw, 76px) 90px; }
 .page header { margin-bottom: 32px; }
@@ -205,7 +198,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .quiet-button { border: 0; background: transparent; color: var(--muted); align-self: start; }
 .kind-switch { display: flex; gap: 6px; }
 .event-modal label, .login label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
-.event-modal input, .event-modal textarea, .event-modal select, .settings select, .login input, .login select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--canvas); color: var(--text); }
+.event-modal input, .event-modal textarea, .event-modal select, .settings select, .yandex-settings input, .login input, .login select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--canvas); color: var(--text); }
 .form-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 9px; }
 .form-note { margin: 0; color: var(--muted); font-size: 12px; }
 .form-error { margin: 0; color: var(--danger) !important; font-size: 12px; }
@@ -229,14 +222,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @keyframes recording { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--danger) 18%, transparent); } }
 @keyframes dots { 50% { opacity: .25; } }
 
-@media (max-width: 1100px) {
-  .assistant-layout { grid-template-columns: 1fr; }
-  .agenda { display: none; }
-}
 @media (max-width: 980px) {
   .month-calendar { grid-template-columns: repeat(7, minmax(92px, 1fr)); }
 }
 @media (max-width: 720px) {
+  button { touch-action: manipulation; }
   .shell { height: 100dvh; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 62px; }
   .sidebar { display: none; }
   .main { grid-row: 1; padding-bottom: 0; }
@@ -284,3 +274,137 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .inline-control select { min-width: 0; }
   .account-row { align-items: flex-start; gap: 15px; }
 }
+
+.yandex-sync-status {display:block;font-size:11px;font-weight:400;line-height:1.5;white-space:normal}.yandex-sync-status button,.yandex-problems button,.yandex-notice button {margin-left:8px;font-size:12px}.yandex-problems,.yandex-notice {padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px}.yandex-problems li {margin:8px 0}.settings-section > button + button {margin-left:8px}.settings-section form label,.settings-section > div > label {display:block;margin:12px 0}.settings-section form input {display:block;width:100%;max-width:400px}
+
+.chat-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.clear-chat-button { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.clear-chat-button:hover { color: var(--danger); border-color: var(--danger); }
+
+.yandex-settings > p { margin-bottom: 24px; }
+.yandex-settings form { margin: 24px 0; }
+.yandex-settings form label { margin: 0 0 20px; }
+.yandex-settings form input { margin-top: 8px; }
+.yandex-password-help { margin: 24px 0; font-size: 13px; line-height: 1.6; }
+.yandex-password-help summary { cursor: pointer; }
+.yandex-password-help ol { padding-left: 22px; margin: 16px 0; }
+.yandex-password-help li + li { margin-top: 12px; }
+.yandex-password-help a { color: var(--accent); }
+.yandex-chat-sync { max-width: 320px; }
+
+.yandex-sync-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); }
+.yandex-sync-button:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.yandex-sync-button:disabled { opacity: .5; cursor: wait; }
+.yandex-sync-button[aria-busy="true"] svg { animation: yandex-sync-spin 1.2s linear infinite; }
+@keyframes yandex-sync-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .yandex-sync-button[aria-busy="true"] svg { animation: none; } }
+
+.calendar-toolbar .yandex-chat-sync { position: relative; flex: 0 0 auto; }
+
+.toolbar-actions .yandex-sync-button { width: 36px; height: 36px; padding: 0; }
+.calendar-sync-feedback { flex: 0 0 auto; display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; line-height: 1.5; }
+.calendar-sync-feedback p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.calendar-sync-feedback button { flex: 0 0 auto; border: 0; padding: 0 4px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; }
+
+/* Touch layouts only: desktop dimensions and appearance stay unchanged. */
+@media (max-width: 720px) {
+  .shell {
+    grid-template-rows: minmax(0, 1fr) auto;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .mobile-nav { padding: 4px 4px env(safe-area-inset-bottom, 0px); gap: 2px; }
+  .mobile-nav button { height: 60px; border-radius: 10px; font-size: 10px; gap: 5px; }
+  .mobile-nav .app-icon { width: 22px; height: 22px; }
+  .mobile-nav button i { right: 4px; }
+
+  .assistant-head { gap: 12px; padding: 14px 16px; }
+  .assistant-head > div:first-child { min-width: 0; }
+  .assistant-head small { font-size: 11px; }
+  .chat-header-actions { gap: 4px; }
+  .clear-chat-button { min-height: 44px; padding: 8px; }
+  .suggestions { flex-shrink: 0; padding: 8px 12px; gap: 6px; }
+  .suggestions button { min-height: 44px; padding: 9px 10px; }
+  .messages { padding: 18px 12px; gap: 16px; overscroll-behavior-y: contain; }
+  .bubble { max-width: 100%; min-width: 0; padding: 12px; overflow-wrap: anywhere; font-size: 15px; }
+  .bubble.user { max-width: 92%; }
+  .chat-records { min-width: 0; }
+  .chat-records > summary { min-height: 44px; padding-block: 13px; }
+  .chat-record-footer button { min-height: 44px; padding-inline: 12px; }
+  .composer-wrap { padding: 8px 10px; }
+  .composer { gap: 4px; padding: 5px; align-items: flex-end; }
+  .composer textarea { font-size: 16px; height: 66px; min-height: 66px; padding: 11px 2px; }
+  .composer:focus-within, .task-quick-add:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .composer .icon-button { display: block; flex: 0 0 36px; width: 36px; height: 44px; }
+  .voice-button { width: 44px; height: 44px; flex-basis: 44px; }
+  .send-button { width: 44px; height: 44px; flex: 0 0 44px; }
+
+  .page { padding: 24px 16px 32px; }
+  .page header { margin-bottom: 24px; }
+  .page-title-row { gap: 10px; }
+  .page-title-row .primary-action { min-width: 44px; min-height: 44px; }
+  .tabs { max-width: 100%; overflow-x: auto; padding: 2px 2px 6px; }
+  .tabs button { min-height: 44px; flex-shrink: 0; }
+  .task-quick-add { min-height: 54px; }
+  .task-quick-add input { width: 0; font-size: 16px; }
+  .task-list article { gap: 4px 8px; padding: 10px 8px; grid-template-columns: 44px minmax(0, 1fr); }
+  .task-check { width: 44px; height: 44px; border-radius: 10px; }
+  .task-content { min-height: 44px; align-content: center; }
+  .task-content b, .task-content small { white-space: normal; overflow-wrap: anywhere; }
+  .task-actions { flex-wrap: wrap; }
+  .task-status, .task-edit { min-height: 44px; padding-inline: 8px; }
+  .simple-list article { min-width: 0; padding: 12px; gap: 10px; }
+  .simple-list article > div { min-width: 0; overflow-wrap: anywhere; }
+  .reminders-page .simple-list .reminder-actions { flex: 1 1 100%; padding-left: 17px; }
+  .reminder-actions button, .reminder-history-actions > button { min-height: 44px; }
+  .theme-picker { flex-wrap: wrap; }
+  .theme-picker button, .secondary-button, .danger-button, .primary-action { min-height: 44px; }
+  .settings select, .yandex-settings input, .login input, .login select { min-width: 0; font-size: 16px; }
+  .account-row { flex-wrap: wrap; }
+  .account-row h2, .account-row p { overflow-wrap: anywhere; }
+
+  .calendar-page { padding: 16px 10px 12px; }
+  .calendar-toolbar { gap: 14px; margin-bottom: 12px; }
+  .calendar-toolbar h1 { font-size: 22px; }
+  .toolbar-actions { width: 100%; gap: 6px; }
+  .toolbar-actions button { min-width: 44px; min-height: 44px; padding-inline: 8px; }
+  .toolbar-actions > button:first-child { display: inline-flex; }
+  .toolbar-actions .yandex-sync-button { width: 44px; height: 44px; }
+  .toolbar-actions .segmented { order: 1; flex: 1 0 100%; margin-left: 0; }
+  .segmented button { flex: 1; }
+  .calendar-add { font-size: 20px; }
+  .calendar-add span { display: inline; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .month-calendar { flex: 0 0 auto; min-height: 540px; grid-template-rows: 28px repeat(6, minmax(82px, auto)); }
+  .month-cell { padding: 5px 2px; }
+  .week-scroll { min-height: 220px; overscroll-behavior: contain; }
+  .week-calendar { --time-column: 44px; min-width: 744px; grid-template-columns: var(--time-column) repeat(7, minmax(100px, 1fr)); }
+  .week-slots { grid-template-columns: repeat(7, minmax(100px, 1fr)); }
+
+  .modal-backdrop { padding: 12px; padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+  .event-modal { min-width: 0; padding: 20px 16px; max-height: 100%; gap: 18px; overscroll-behavior-y: contain; }
+  .modal-head h2 { font-size: 20px; }
+  .quiet-button { min-width: 44px; min-height: 44px; }
+  .kind-switch { gap: 4px; }
+  .kind-switch button { flex: 1; min-width: 0; min-height: 44px; padding-inline: 5px; }
+  .event-modal input, .event-modal textarea, .event-modal select { min-width: 0; max-width: 100%; font-size: 16px; }
+  .event-modal label { min-width: 0; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions button { flex: 1; }
+  .modal-actions > span { display: none; }
+  .login { padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+  .login form { min-width: 0; padding: 24px; }
+}
+
+@media (max-width: 360px) {
+  .mobile-nav button { font-size: 9px; letter-spacing: -.02em; }
+  .composer textarea { height: 88px; min-height: 88px; }
+  .form-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+.yandex-sync-icon, .week-event .yandex-sync-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 18px; vertical-align: middle; }
+.calendar-event { position: relative; padding-right: 24px; }
+.calendar-event .yandex-sync-icon, .week-event .yandex-sync-icon { position: absolute; top: 3px; right: 4px; margin: 0; }
+.week-event { padding-right: 24px; }
+.yandex-sync-icon.sync-synced { color: var(--accent); }
+.yandex-sync-icon.sync-failed, .yandex-sync-icon.sync-conflict, .yandex-sync-icon.sync-missing { color: var(--danger); }

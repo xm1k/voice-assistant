@@ -1,3 +1,4 @@
+import {YandexSyncStatus} from './YandexCalendar';
 import {useState} from 'react';
 import {ACTION_NAMES, KIND_NAMES, STATUS_NAMES, cardDateLabel, openCardRecord} from './chat-cards.js';
 
@@ -13,7 +14,7 @@ function ChatRecordCard({card, timezone, api, onOpen}) {
   };
   return <section className={`chat-record-card kind-${record.kind}`} aria-label={`${KIND_NAMES[record.kind]}: ${record.title}`}>
     <div className="chat-record-meta"><span>{KIND_NAMES[record.kind]}</span><span>{ACTION_NAMES[card.action]}</span></div>
-    <h3>{record.title}</h3>
+    <h3>{record.title}</h3><YandexSyncStatus record={record} />
     <p className="chat-record-date">{cardDateLabel(record, timezone)}</p>
     {record.start_at || record.remind_at ? <small className="chat-record-zone">{timezone}</small> : null}
     <div className="chat-record-footer"><span>{STATUS_NAMES[record.status]}{record.recurrence ? ' · Повторяется' : ''}{record.occurrence_at ? ' · Выбранное повторение' : ''}</span>

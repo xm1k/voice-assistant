@@ -54,6 +54,11 @@ def run_build_script(script_path):
         return False
 
 
+def prune_images():
+    # Rebuilt :latest tags leave previous images untagged; current tags keep the layer cache.
+    subprocess.run(["podman", "image", "prune", "-f"], check=False)
+
+
 def generate_dirs_list(paths, repo_path="."):
     levels = []
 
@@ -82,6 +87,8 @@ def main():
         for directory in level:
             print("Try run: " + directory + "/build.sh")
             run_build_script(directory + "/build.sh")
+
+    prune_images()
 
 
 if __name__ == "__main__":

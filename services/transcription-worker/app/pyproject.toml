@@ -1,0 +1,25 @@
+[project]
+name = "golos-transcription-worker"
+version = "0.1.0"
+description = "Speech recognition worker for the transcription queue"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "httpx>=0.28,<1",
+  "pyyaml>=6,<7",
+  "aio-pika>=9.5,<10",
+]
+[project.optional-dependencies]
+# faster-whisper 1.2.1 uses metadata_errors, removed in PyAV 19.
+speech = ["faster-whisper>=1.1,<2", "av>=16,<19"]
+dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.11,<1"]
+[tool.uv]
+package = false
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["postgres: requires TEST_POSTGRES_URL", "live: requires external models or API credentials"]
+[tool.ruff]
+line-length = 110
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

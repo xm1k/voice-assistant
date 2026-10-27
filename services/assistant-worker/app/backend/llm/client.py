@@ -7,9 +7,10 @@ import time
 import uuid
 
 import httpx
+from pydantic import ValidationError
+
 from backend.common.config import llm_profiles
 from backend.common.errors import validation_detail
-from pydantic import ValidationError
 
 _PROVIDER_CACHE: dict = {"name": None, "at": 0.0}
 _CACHE_TTL = 30
@@ -53,25 +54,33 @@ class StaleJob(RuntimeError):
 
 
 def validate_decision(value):
-    from backend.common.schemas import Decision
     from pydantic import TypeAdapter
+
+    from backend.common.schemas import Decision
 
     return TypeAdapter(Decision).validate_python(value).model_dump(mode="json", exclude_none=True)
 
 
-async def run_decision(messages, completion, query, validate):
+async def run_decision(messages, completion, query, validate, *, job_id=None):
     history = list(messages)
     retrieved = set()
-    for _ in range(8):
+    for attempt in range(1, 9):
         previous = None
         try:
             previous = await completion(history)
             decision = validate_decision(previous)
+            logger.info("Decision job=%s attempt=%s type=%s", job_id, attempt, decision["type"])
+            logger.debug("Decision data job=%s attempt=%s data=%s", job_id, attempt,
+                         json.dumps(decision, ensure_ascii=False)[:8000])
             for ref in decision.get("record_refs", []):
                 if (ref["id"], ref["version"], ref.get("occurrence_at")) not in retrieved:
                     raise InvalidModelResponse("Ссылка на запись должна быть получена из query.")
             if decision["type"] != "query":
                 feedback = await validate(decision)
+                logger.info("Decision validation_result job=%s attempt=%s code=%s", job_id, attempt,
+                            feedback.get("code", "ok") if feedback else "ok")
+                logger.debug("Decision validation data job=%s attempt=%s data=%s", job_id, attempt,
+                             json.dumps(feedback, ensure_ascii=False)[:8000])
                 if feedback and feedback.get("code") == "meeting_conflict":
                     history.extend([
                         {"role": "assistant", "content": json.dumps(decision, ensure_ascii=False)},
@@ -87,6 +96,20 @@ async def run_decision(messages, completion, query, validate):
                     continue
                 return decision
             result = await query(decision["query"])
+            logger.info("Decision query_result job=%s attempt=%s operation=%s items=%s error=%s",
+                        job_id, attempt, decision["query"]["operation"], len(result.get("items", [])),
+                        result.get("error") is not None)
+            logger.debug("Decision query data job=%s attempt=%s query=%s result=%s", job_id, attempt,
+                         json.dumps(decision["query"], ensure_ascii=False)[:8000],
+                         json.dumps(result, ensure_ascii=False)[:8000])
+            if result.get("error") is not None:
+                raise InvalidModelResponse("Ошибка запроса данных", errors=[{
+                    "loc": ["query"], "code": "query_failed",
+                    "message": "Ошибка запроса не означает, что записи не найдены. Исправьте query, "
+                               "используя уже известные дату и параметры. Для одного известного дня "
+                               "задайте period_start=period_end. Уточняйте только отсутствующие данные.",
+                    "detail": result["error"],
+                }])
         except (ValidationError, json.JSONDecodeError, InvalidModelResponse, httpx.HTTPStatusError) as exc:
             if isinstance(exc, httpx.HTTPStatusError):
                 if exc.response.status_code not in (404, 409, 422):
@@ -111,6 +134,10 @@ async def run_decision(messages, completion, query, validate):
                 errors = exc.errors
                 if exc.previous is not None:
                     previous = exc.previous
+            logger.info("Decision rejected job=%s attempt=%s codes=%s", job_id, attempt,
+                        [error.get("code", "invalid_response") for error in errors[:20]])
+            logger.debug("Decision errors job=%s attempt=%s data=%s", job_id, attempt,
+                         json.dumps(errors[:20], ensure_ascii=False)[:8000])
             if previous is not None:
                 content = previous if isinstance(previous, str) else json.dumps(previous, ensure_ascii=False)
                 history.append({"role": "assistant", "content": content[:8000]})
@@ -149,8 +176,9 @@ def strict_schema(value):
 
 
 async def complete(messages):
-    from backend.common.schemas import Decision
     from pydantic import TypeAdapter
+
+    from backend.common.schemas import Decision
 
     config = await _active_llm_config()
     key = os.getenv(config["api_key_env"], "")

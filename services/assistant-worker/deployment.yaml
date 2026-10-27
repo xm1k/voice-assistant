@@ -56,11 +56,6 @@ spec:
                 secretKeyRef:
                   name: secrets
                   key: DEEPSEEK_API_KEY
-            - name: YADRO_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: secrets
-                  key: YADRO_API_KEY
             - name: STT_API_KEY
               valueFrom:
                 secretKeyRef:

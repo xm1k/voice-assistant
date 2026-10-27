@@ -4,9 +4,10 @@ set -eux
 echo "ready"
 REGISTRY=registry.registry.svc.cluster.local:5000
 IMAGE=$REGISTRY/assistant-worker:latest
-REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 
-podman build -f services/assistant-worker/app/Dockerfile -t $IMAGE "$REPO_ROOT"
+# Tagged so CI image pruning keeps the dependency layers cached.
+podman build -f Dockerfile --target dependencies -t $IMAGE-deps .
+podman build -f Dockerfile -t $IMAGE .
 podman push $IMAGE --tls-verify=false
 
 echo "$KUBECONFIG_DATA" > /tmp/kubeconfig

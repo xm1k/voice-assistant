@@ -2,6 +2,7 @@
 
 import json
 import re
+import subprocess
 import time
 from datetime import datetime
 from html import escape
@@ -12,11 +13,30 @@ LABELS = {"passed": "Прошли", "failed": "Не прошли", "error": "О�
 ROW_LABELS = {"passed": "Пройден", "failed": "Не пройден", "error": "Ошибка", "skipped": "Пропущен", "notrun": "Не завершён"}
 
 
+def git_revision():
+    directory = Path(__file__).resolve().parent
+    try:
+        result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=directory,
+                                capture_output=True, text=True, check=True, timeout=2)
+        revision = result.stdout.strip()
+        if not re.fullmatch(r"[0-9a-f]{7,64}", revision):
+            return "unknown"
+        state = subprocess.run(["git", "diff-index", "--quiet", "HEAD", "--"], cwd=directory,
+                               capture_output=True, timeout=2)
+        if state.returncode not in (0, 1):
+            return "unknown"
+        return revision + ("-dirty" if state.returncode else "")
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 class HtmlReport:
     def __init__(self, path, base_url):
-        self.path = Path(path)
         self.base_url = base_url
         self.started = datetime.now(ZoneInfo("Europe/Moscow"))
+        self.path = (Path(path) if path is not None else
+                     Path(__file__).with_name("reports") /
+                     f"report_{self.started:%Y-%m-%d_%H-%M-%S_%f}_{git_revision()}.html")
         self.clock = time.monotonic()
         self.cases = {}
         self.collection_errors = []

@@ -1,6 +1,7 @@
 # RabbitMQ delivery
 
-All four queues share the consumer in `shared/backend/chat/broker.py`. ACK follows
+Every queue uses the same consumer: core's `services/core/app/backend/chat/broker.py`
+and its copy `backend/broker.py` in each worker service. ACK follows
 successful processing or confirmed mandatory publication to the existing retry/dead
 queue. At attempt five, dead publication precedes the core exhausted notification
 and source ACK. HTTP 409 keeps the attempt unchanged. Failed publication or core
@@ -26,10 +27,11 @@ after embedding and updates the existing embedding row.
 
 ## Verification
 
-No paid LLM calls are needed:
+No paid LLM calls are needed. Each service with a broker copy carries the same
+`tests/test_broker_delivery.py`:
 
 ```sh
-python -m pytest shared/tests_v2 -q
+cd services/<service>/app && uv run pytest -q
 ```
 
 Real fault tests require existing isolated test endpoints:
@@ -37,7 +39,7 @@ Real fault tests require existing isolated test endpoints:
 ```sh
 TEST_POSTGRES_URL=postgresql+psycopg://user@127.0.0.1/test_database \
 TEST_RABBITMQ_URL=amqp://user:password@127.0.0.1/test_vhost \
-python -m pytest shared/tests_v2 -q
+uv run --directory services/core/app pytest -q
 ```
 
 Use a dedicated empty vhost, never the production/default vhost. Tests use the

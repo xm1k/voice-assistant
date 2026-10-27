@@ -33,6 +33,7 @@ from backend.chat.responses import (
     Page,
     RecordOutput,
 )
+from backend.chat.yandex import router as yandex_router
 from backend.common.errors import (
     install_validation_handler,
     public_validation_message,
@@ -56,6 +57,7 @@ from pydantic import Field, ValidationError
 from sqlalchemy import select
 
 app = FastAPI(title="Golos Domain API", version="1.0.0")
+app.include_router(yandex_router)
 install_validation_handler(app)
 TERMINAL = ("succeeded", "failed", "cancelled")
 

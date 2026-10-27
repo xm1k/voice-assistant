@@ -5,6 +5,7 @@ import logging
 import os
 
 import httpx
+
 from backend.llm.client import InvalidModelResponse, StaleJob, complete, run_decision
 from backend.llm.prompt import system_prompt
 
@@ -38,7 +39,7 @@ async def core(path, body):
 
 
 async def handle_job(payload):
-    from backend.chat.broker import publish
+    from backend.broker import publish
 
     job_id = payload["job_id"]
     context = await core(f"/internal/jobs/{job_id}/claim", {"kind": "assistant"})
@@ -66,7 +67,7 @@ async def handle_job(payload):
                 "claim_token": context["claim_token"], "decision": decision,
             })
 
-        decision = await run_decision(messages, complete, query, validate)
+        decision = await run_decision(messages, complete, query, validate, job_id=job_id)
 
     except StaleJob:
         logger.info("Discarding stale job id=%s", job_id)
@@ -117,11 +118,12 @@ async def main():
     except Exception:
         logger.warning("Could not register LLM profiles with core")
     logger.info("Assistant worker starting queue=chat")
-    from backend.chat.broker import consume
+    from backend.broker import consume
 
     await consume("chat", handle_job)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.getLogger("backend.llm.client").setLevel(os.getenv("LLM_LOG_LEVEL", "INFO").upper())
     asyncio.run(main())

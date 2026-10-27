@@ -5,7 +5,7 @@ import logging
 import os
 
 import httpx
-from backend.voice.main import transcribe, trusted_audio_path
+from backend.speech import transcribe, trusted_audio_path
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ async def handle_job(payload):
 
 async def main():
     logger.info("Transcription worker starting queue=transcription")
-    from backend.chat.broker import consume
+    from backend.broker import consume
 
     await consume("transcription", handle_job)
 
