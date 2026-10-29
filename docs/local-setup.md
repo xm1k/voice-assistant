@@ -17,7 +17,9 @@
 9. [Шаг 7. Проверяем и пользуемся](#шаг-7-проверяем-и-пользуемся)
 10. [Структура и порты](#структура-и-порты)
 11. [Перезапуск, обновление, откат](#перезапуск-обновление-откат)
-12. [Ограничения и диагностика](#ограничения-и-диагностика)
+12. [Локальная разработка](#локальная-разработка)
+13. [Эксплуатация: Argo CD, обновление, резервные копии](#эксплуатация-argo-cd-обновление-резервные-копии)
+14. [Ограничения и диагностика](#ограничения-и-диагностика)
 
 ---
 
@@ -305,6 +307,68 @@ kubectl -n voice-assistant rollout undo deployment core
 ```
 
 **Поднять из свежего пустого кластера** — достаточно повторить шаги 3–6 (образы уже могут быть в registry, если PVC сохранены).
+
+---
+
+## Локальная разработка
+
+Кластер для дев-итераций поднимать не обязательно — каждый backend-сервис имеет свои зависимости и тесты и запускается прямо из своего каталога:
+
+```sh
+cd services/<имя>/app
+uv sync --extra dev        # core и rag: ещё --extra search, transcription-worker: --extra speech
+uv run pytest -q
+```
+
+Межсервисные контрактные тесты (исходники core, assistant-worker и yandex-calendar загружаются в один процесс) запускаются отдельно:
+
+```sh
+cd tests/integration
+uv sync --extra dev
+uv run pytest -q
+```
+
+Сервис запускается из своего каталога так же, как в Dockerfile, например `uv run python -m backend.chat.application` для core. Потребуются отдельные PostgreSQL, RabbitMQ и переменные адресов зависимостей; Compose-файлов в репозитории нет. Для локальной диагностики используйте подменённые провайдеры без платных вызовов и изменения production-данных.
+
+Frontend без backend:
+
+```sh
+cd services/gateway/app/frontend
+npm ci
+npm run dev:mock
+```
+
+Обычный `npm run dev` использует Vite proxy на `localhost:8001`; локальный доступ к gateway настройте отдельно. `npm run build` собирает production-интерфейс; существующие проверки запускаются `node --test tests/*.test.js`.
+
+## Эксплуатация: Argo CD, обновление, резервные копии
+
+В продакшене развёртывание идёт через **Argo CD (GitOps)**: репозиторий — источник истины. Корневое Application подключается один раз:
+
+```sh
+kubectl apply -f apps/app-of-apps.yaml
+kubectl -n argocd get applications
+kubectl -n voice-assistant get pods,svc,pvc
+```
+
+Argo CD читает каталог `apps/`, а дочерние Applications — каталоги сервисов. Автоматические `prune`/`self-heal` могут отменить ручные изменения управляемых ресурсов, поэтому настройка безопасной доставки секретов должна предшествовать первому sync. Перед первым sync подготовьте registry и CI по `infra/`, Secret `secrets`, ConfigMap, PVC, сертификаты gateway и внешний адрес приложения; пароли в URL соединения должны быть URL-safe.
+
+Базовые сущности репозитория: `services/<имя>/` — Deployments и Services, `services/base/` — общие ConfigMap, Secret и PVC, `apps/` — Argo CD Applications, `infra/` — registry, Woodpecker, RBAC. Frontend живёт в `services/gateway/app/frontend/` и включается в образ gateway; отдельный `webui` не является frontend «Голос v2».
+
+> Auth запускает миграцию через init-контейнер `db-init`; скрипт образа PostgreSQL создаёт базы, пользователей и pgvector только при первом запуске с пустым томом. На существующем PVC init-скрипты повторно не выполняются — проверяйте успешность миграции отдельно. Обновление приложения не переносит данные из другого проекта автоматически.
+
+**Частые диагностические команды эксплуатации:**
+
+```sh
+kubectl -n voice-assistant get pods -o wide
+kubectl -n voice-assistant get events --sort-by=.lastTimestamp
+kubectl -n voice-assistant logs deployment/core -c core --tail=100 --timestamps
+kubectl -n voice-assistant logs deployment/assistant-worker -c assistant-worker --tail=100 --timestamps
+kubectl -n voice-assistant rollout status deployment/core
+```
+
+Успех конкретной операции определяется статусом задания и результатом core, а не HTTP 200 от модели. Build-runner выводит ошибки отдельных сборок, но не гарантирует ненулевой итоговый код — проверяйте его логи и rollout. Для нового endpoint валидации сначала обновите core, затем assistant-worker и gateway; автоматическая сборка не гарантирует такой порядок. Тег `latest` изменяемый: для надёжного отката сохраняйте проверенный digest образа или ревизию.
+
+**Резервные копии и отказоустойчивость.** Не удаляйте PVC БД и брокера при обычном обновлении. Делайте отдельные backup `golos_auth` и `golos_domain` и проверяйте восстановление. Общие audio/search PVC используют ReadWriteOnce: размещение на нескольких узлах требует соответствующего хранилища или согласованного размещения pod. Одиночные PostgreSQL/RabbitMQ не дают высокой доступности. Мониторинг, backup и ротация сертификатов требуют отдельной эксплуатации.
 
 ---
 
