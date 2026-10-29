@@ -97,22 +97,7 @@
 
 **Ключевой принцип:** LLM не обращается к БД и не выполняет SQL. Модель возвращает структурированное решение, а "движок" [core-модуль](services/core/app/backend/chat/application.py) проверяет бизнес-правила, права пользователя и версии записей, после чего атомарно применяет изменения в PostgreSQL.
 
-```mermaid
-flowchart TB
-    browser["Браузер · React"] <-->|"HTTPS / WebSocket"| gateway["gateway · nginx"]
-    gateway --> auth["auth"]
-    gateway --> voice["voice"]
-    gateway <--> core["core · API и фоновые процессы"]
-    auth --> authdb[("PostgreSQL · golos_auth")]
-    core --> domain[("PostgreSQL + pgvector · golos_domain")]
-    core -->|"outbox"| rabbit["RabbitMQ"]
-    rabbit --> worker["assistant-worker"]
-    worker <--> llm["LLM-провайдер"]
-    worker <--> rag["rag"]
-    rabbit --> transcription["transcription-worker · Whisper / STT"]
-    rabbit --> yandex["yandex-calendar"]
-    yandex <--> externalCalendar["Яндекс Календарь · CalDAV"]
-```
+<img src="docs/pics/arch.png" width="100%">
 
 ### Жизненный цикл запроса
 
