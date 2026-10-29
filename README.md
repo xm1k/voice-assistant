@@ -67,18 +67,18 @@
 
 1. Зайдите на [`https://194.169.160.248:31016`](https://194.169.160.248:31016)
 2. Зарегистрируйтесь или используйте готовый аккаунт `hackaton:hackaton` (где мы уже помучили агента)
-![](docs/pics/welcome_page.png)
+<img src="docs/pics/welcome_page.png" width="70%">
 3. (По желанию) подключите Яндекс Календарь в настройках для полного экспириенса
-![](docs/pics/settings.png) ![](docs/pics/yandex.png)
+<img src="docs/pics/settings.png" width="49%"> <img src="docs/pics/yandex.png" width="49%">
 4. **Вы готовы к работе!**
 
 Примеры запросов описаны в сценариях выше, вот несколько из них:
 
 - Создание встречи с синхронизацией с Яндекс Календарём
-![](docs/pics/created_meet_1.png) ![](docs/pics/created_meet_1_yandex.png)
+<img src="docs/pics/created_meet_1.png" width="49%"> <img src="docs/pics/created_meet_1_yandex.png" width="49%">
 
 - Поиск встреч
-![](docs/pics/find_meets_1.png)
+<img src="docs/pics/find_meets_1.png" width="70%">
 
 
 ### Локально
@@ -93,7 +93,7 @@
 
 «Голосок» построен имеет микросервисную архитектуру.
 
-**Ключевой принцип:** LLM не обращается к БД и не выполняет SQL. Модель возвращает структурированное решение, а "движок" core модуль проверяет бизнес-правила, права пользователя и версии записей, после чего атомарно применяет изменения в PostgreSQL.
+**Ключевой принцип:** LLM не обращается к БД и не выполняет SQL. Модель возвращает структурированное решение, а "движок" [core-модуль](services/core/app/backend/chat/application.py) проверяет бизнес-правила, права пользователя и версии записей, после чего атомарно применяет изменения в PostgreSQL.
 
 ```mermaid
 flowchart TB
@@ -123,11 +123,9 @@ flowchart TB
 
 Анимированные схемы маршрута запроса, блоков сервисов и трёх веток модели:
 
-![](docs/assets/request-flow.gif)
-
-![](docs/assets/service-blocks.gif)
-
-![](docs/assets/llm-scenarios.gif)
+<img src="docs/assets/request-flow.gif" width="32%">
+<img src="docs/assets/service-blocks.gif" width="32%">
+<img src="docs/assets/llm-scenarios.gif" width="32%">
 
 Детальное описание компонентов, очередей, моделей данных и обработки ошибок — в документе [Архитектура](docs/architecture.md), а точный контракт LLM — в [docs/llm-service.md](docs/llm-service.md).
 
