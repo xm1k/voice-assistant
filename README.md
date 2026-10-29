@@ -83,7 +83,7 @@
 1. Зайдите на [`https://194.169.160.248:31016`](https://194.169.160.248:31016)
 
 2. Зарегистрируйтесь или используйте готовый аккаунт `hackaton:hackaton` (где мы уже помучили агента) \
-<img src="docs/pics/welcome_page.png" width="60%">
+    <img src="docs/pics/welcome_page.png" width="60%">
 
 3. (По желанию) подключите Яндекс Календарь в настройках для полного экспириенса \
 <img src="docs/pics/settings.png" width="49%"> <img src="docs/pics/yandex.png" width="49%">
@@ -96,7 +96,7 @@
 <img src="docs/pics/created_meet_1.png" width="49%"> <img src="docs/pics/created_meet_1_yandex.png" width="49%">
 
 - Поиск встреч \
-<img src="docs/pics/find_meets_1.png" width="60%">
+    <img src="docs/pics/find_meets_1.png" width="60%">
 
 
 ### Локальная версия
