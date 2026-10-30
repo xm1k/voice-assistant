@@ -183,6 +183,6 @@ Core предварительно применяет весь набор ком�
 ## Документы
 
 - Контракт LLM и его схема решений: [`docs/llm-service.md`](llm-service.md)
-- Три ветки решения модели (`clarify` / `query` / `ready`): [`docs/llm/`](llm/README.md)
+- Три ветки решения модели (`clarify` / `query` / `ready`): [`docs/llm/README.md`](llm/README.md)
 - Доставка RabbitMQ: [`docs/rabbitmq-delivery.md`](rabbitmq-delivery.md)
 - Интеграция с Яндекс Календарём: [`docs/yandex-calendar.md`](yandex-calendar.md)
