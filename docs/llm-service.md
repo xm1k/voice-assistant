@@ -1,7 +1,5 @@
 # LLM: схема решений, команды и ветки обработки
 
-[README](../README.md) · [Архитектура](../architecture.md)
-
 Источники контракта: `services/core/app/backend/common/schemas.py` (копия — в assistant-worker), `services/core/app/backend/chat/domain.py`, `services/assistant-worker/app/backend/llm/` и `services/core/app/backend/chat/`. Worker — обработчик очереди `chat`, отдельного публичного API у него нет.
 
 ## Контекст и передача схемы
